@@ -729,15 +729,18 @@
 // CONFIG — UPDATE GID VALUES TO MATCH YOUR SHEET TABS
 // ============================================================
 const SHEET_ID = '11T58NlMVg2NAiygt3IDl0nR-UZJoWZBLbui1TFZmpFE';
-const SHEET_CSV_BASE = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=`;
 
-// GID tiap tab Google Sheet
+// Published-to-web key dari link CSV yang kamu kirim sebelumnya.
+// Dipakai sebagai fallback kalau endpoint /export atau /gviz Google Sheet gagal.
+const PUBLISHED_SHEET_ID = '2PACX-1vRi8cH5nQW3xAnkC8gLRwI8QsiKzbaaQV_w577RvjKKMRfQAw96ZCt0cNBfiIuCtqtm4fxzH8h5-X_0';
+
+// GID tiap tab Google Sheet + nama tab untuk fallback yang lebih stabil.
 const TABS = {
-  access:        SHEET_CSV_BASE + '185308502', // Access tab
-  database:      SHEET_CSV_BASE + '257024260', // Database tab
-  participation: SHEET_CSV_BASE + '0',         // Learning Participation tab
-  recap:         SHEET_CSV_BASE + '550872410', // Recap tab
-  searchbar:     SHEET_CSV_BASE + '904954376', // Search Bar tab
+  access:        { gid: '185308502', sheet: 'Access' },
+  database:      { gid: '257024260', sheet: 'Database', fallback: [{ gid: '904954376', sheet: 'Search Bar' }] },
+  participation: { gid: '0',         sheet: 'Learning Participation' },
+  recap:         { gid: '550872410', sheet: 'Recap' },
+  searchbar:     { gid: '904954376', sheet: 'Search Bar' },
 };
 
 const GOOGLE_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSf8U74xTaJLESZOAVU8qVGYPA-yK_9ypm8n6wyRMHTw_ihTRQ/viewform';
@@ -872,22 +875,37 @@ function updateMaintenanceUI(active) {
 }
 
 // ============================================================
-// CSV PARSER
+// CSV / GOOGLE SHEET LOADER
 // ============================================================
+function makeUniqueHeaders(headers) {
+  const counts = {};
+  return headers.map((raw, idx) => {
+    let h = (raw || '').toString().replace(/^\uFEFF/, '').trim();
+    if (!h) h = 'Column ' + (idx + 1);
+    counts[h] = (counts[h] || 0) + 1;
+    // Duplicate headers are common in Database (topic hours + session counts).
+    // First column keeps the original name, duplicates get trailing spaces.
+    return counts[h] === 1 ? h : h + ' '.repeat(counts[h] - 1);
+  });
+}
+
 function parseCSV(text) {
-  const lines = text.trim().split('\n');
+  const clean = (text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  if (!clean) return [];
+  const lines = clean.split('\n');
   if (lines.length < 2) return [];
-  const headers = parseCSVRow(lines[0]);
+  const headers = makeUniqueHeaders(parseCSVRow(lines[0]));
   const rows = [];
   for (let i = 1; i < lines.length; i++) {
     const vals = parseCSVRow(lines[i]);
-    if (vals.every(v => !v.trim())) continue;
+    if (vals.every(v => !String(v || '').trim())) continue;
     const obj = {};
-    headers.forEach((h, idx) => { obj[h.trim()] = (vals[idx] || '').trim(); });
+    headers.forEach((h, idx) => { obj[h] = (vals[idx] || '').toString().trim(); });
     rows.push(obj);
   }
   return rows;
 }
+
 function parseCSVRow(line) {
   const result = []; let current = ''; let inQuotes = false;
   for (let i = 0; i < line.length; i++) {
@@ -902,12 +920,170 @@ function parseCSVRow(line) {
   result.push(current);
   return result;
 }
-async function fetchCSV(url) {
-  const joiner = url.includes('?') ? '&' : '?';
-  const res = await fetch(url + joiner + 'cache=' + Date.now());
-  if (!res.ok) throw new Error('Gagal mengambil data: ' + res.status);
-  const text = await res.text();
-  return parseCSV(text);
+
+function getTabCandidates(source) {
+  if (Array.isArray(source)) {
+    return source.flatMap(item => getTabCandidates(item));
+  }
+
+  if (source && typeof source === 'object') {
+    const primary = { gid: String(source.gid || ''), sheet: source.sheet || '' };
+    const fallback = Array.isArray(source.fallback)
+      ? source.fallback.map(tab => ({ gid: String(tab.gid || ''), sheet: tab.sheet || '' }))
+      : [];
+    return [primary, ...fallback].filter(tab => tab.gid || tab.sheet);
+  }
+
+  const value = String(source || '');
+  const gidMatch = value.match(/[?&]gid=(\d+)/);
+  const sheetMatch = value.match(/[?&]sheet=([^&]+)/);
+  const tab = {
+    gid: gidMatch ? gidMatch[1] : value,
+    sheet: sheetMatch ? decodeURIComponent(sheetMatch[1].replace(/\+/g, ' ')) : ''
+  };
+  return [tab].filter(t => t.gid || t.sheet);
+}
+
+function buildSheetUrls(tab) {
+  const gid = encodeURIComponent(tab.gid || '');
+  const sheet = encodeURIComponent(tab.sheet || '');
+  const urls = [];
+
+  // 1) Pakai nama sheet lebih dulu. Ini membantu kalau GID berubah/terbaca aneh.
+  if (tab.sheet) {
+    urls.push(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${sheet}`);
+    urls.push(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?sheet=${sheet}&tqx=out:csv`);
+  }
+
+  // 2) Pakai GID tab.
+  if (tab.gid) {
+    urls.push(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${gid}`);
+    urls.push(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&id=${SHEET_ID}&gid=${gid}`);
+  }
+
+  // 3) Fallback ke link Publish to web.
+  if (tab.gid && typeof PUBLISHED_SHEET_ID !== 'undefined' && PUBLISHED_SHEET_ID) {
+    urls.push(`https://docs.google.com/spreadsheets/d/e/${PUBLISHED_SHEET_ID}/pub?gid=${gid}&single=true&output=csv`);
+    urls.push(`https://docs.google.com/spreadsheets/d/e/${PUBLISHED_SHEET_ID}/pub?output=csv&gid=${gid}`);
+  }
+
+  return [...new Set(urls)];
+}
+
+function gvizCellToText(cell) {
+  if (!cell) return '';
+  if (cell.f !== undefined && cell.f !== null) return String(cell.f);
+  if (cell.v !== undefined && cell.v !== null) return String(cell.v);
+  return '';
+}
+
+function gvizTableToRows(table) {
+  if (!table || !Array.isArray(table.cols)) return [];
+  const headers = makeUniqueHeaders(table.cols.map((c, idx) => c.label || c.id || ('Column ' + (idx + 1))));
+  const rows = (table.rows || []).map(r => {
+    const obj = {};
+    headers.forEach((h, idx) => { obj[h] = gvizCellToText((r.c || [])[idx]).trim(); });
+    return obj;
+  });
+  return rows.filter(row => Object.values(row).some(v => String(v || '').trim()));
+}
+
+function fetchGvizJSONP(tab) {
+  return new Promise((resolve, reject) => {
+    const callbackName = '__kgGvizCb_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    const script = document.createElement('script');
+    let done = false;
+
+    const previousGoogle = window.google;
+    window.google = window.google || {};
+    window.google.visualization = window.google.visualization || {};
+    window.google.visualization.Query = window.google.visualization.Query || {};
+    const previousSetResponse = window.google.visualization.Query.setResponse;
+
+    function cleanup() {
+      done = true;
+      delete window[callbackName];
+      if (previousSetResponse) window.google.visualization.Query.setResponse = previousSetResponse;
+      else if (window.google && window.google.visualization && window.google.visualization.Query) delete window.google.visualization.Query.setResponse;
+      if (!previousGoogle && window.google && window.google.visualization && window.google.visualization.Query && Object.keys(window.google.visualization.Query).length === 0) {
+        // Keep cleanup conservative; leaving an empty google object is harmless.
+      }
+      if (script.parentNode) script.parentNode.removeChild(script);
+      clearTimeout(timer);
+    }
+
+    const timer = setTimeout(() => {
+      if (done) return;
+      cleanup();
+      reject(new Error('timeout saat membaca Google Sheet'));
+    }, 15000);
+
+    window[callbackName] = (response) => {
+      if (done) return;
+      cleanup();
+      if (!response || response.status === 'error') {
+        const err = response && response.errors && response.errors[0];
+        reject(new Error((err && (err.detailed_message || err.message)) || 'Google Visualization API error'));
+        return;
+      }
+      resolve(gvizTableToRows(response.table));
+    };
+    window.google.visualization.Query.setResponse = window[callbackName];
+
+    const params = new URLSearchParams();
+    if (tab.gid) params.set('gid', tab.gid);
+    if (tab.sheet) params.set('sheet', tab.sheet);
+    params.set('headers', '1');
+    params.set('tq', 'select *');
+    params.set('tqx', 'out:json;responseHandler:' + callbackName);
+    script.onerror = () => {
+      if (done) return;
+      cleanup();
+      reject(new Error('script Google Sheet gagal dimuat'));
+    };
+    script.src = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?${params.toString()}`;
+    document.head.appendChild(script);
+  });
+}
+
+async function fetchCSV(source) {
+  const candidates = getTabCandidates(source);
+  let lastError = null;
+  let firstEmptyResult = null;
+  const labels = [];
+
+  for (const tab of candidates) {
+    const label = tab.sheet ? tab.sheet + ' (GID ' + (tab.gid || '-') + ')' : 'GID ' + tab.gid;
+    labels.push(label);
+
+    for (const url of buildSheetUrls(tab)) {
+      try {
+        const res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const text = await res.text();
+        if (/^\s*</.test(text)) throw new Error('response HTML, bukan CSV');
+        const rows = parseCSV(text);
+        if (rows.length > 0) return rows;
+        if (firstEmptyResult === null) firstEmptyResult = rows;
+      } catch (err) {
+        lastError = err;
+        console.warn('CSV fetch fallback failed:', label, url, err);
+      }
+    }
+
+    try {
+      const rows = await fetchGvizJSONP(tab);
+      if (rows.length > 0) return rows;
+      if (firstEmptyResult === null) firstEmptyResult = rows;
+    } catch (err) {
+      lastError = err;
+      console.warn('GViz JSONP fallback failed:', label, err);
+    }
+  }
+
+  if (firstEmptyResult !== null) return firstEmptyResult;
+
+  throw new Error('Gagal mengambil data tab ' + labels.join(' / ') + '. Pastikan Google Sheet sudah Share: Anyone with the link - Viewer, tab tidak hidden, dan Publish to web = Entire document. Detail: ' + (lastError ? lastError.message : 'unknown'));
 }
 
 // ============================================================
