@@ -724,21 +724,21 @@
 // ============================================================
 // CONFIG - GOOGLE SHEET
 // ============================================================
-// &single=true mencegah 307 redirect dari Google — ini kunci kecepatan
-// gviz/tq endpoint — dirancang untuk dibaca browser, ada CORS header, tidak redirect
-const SHEET_ID = '11T58NlMVg2NAiygt3IDl0nR-UZJoWZBLbui1TFZmpFE';
+// Pakai link Publish to web CSV, bukan gviz/sheet=..., supaya cukup publish
+// document dan tiap tab dibaca lewat GID masing-masing.
+const SHEET_PUBLISH_BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAnkC8gLRwI8QsiKzbaaQV_w577RvjKKMRfQAw96ZCt0cNBfiIuCtqtm4fxzH8h5-X_0/pub';
 
-function sheetUrl(tabName) {
-  return 'https://docs.google.com/spreadsheets/d/' + SHEET_ID +
-    '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent(tabName);
+function sheetUrl(gid) {
+  // Format publish-to-web yang paling stabil untuk tab tertentu.
+  return SHEET_PUBLISH_BASE + '?gid=' + encodeURIComponent(gid) + '&single=true&output=csv';
 }
 
 const TABS = {
-  access:        sheetUrl('Access'),
-  database:      sheetUrl('Database'),
-  participation: sheetUrl('Learning Participation'),
-  recap:         sheetUrl('Recap'),
-  searchbar:     sheetUrl('Search Bar'),
+  access:        sheetUrl('185308502'),
+  database:      sheetUrl('257024260'),
+  participation: sheetUrl('0'),
+  recap:         sheetUrl('550872410'),
+  searchbar:     sheetUrl('904954376'),
 };
 
 // NIK normalization: strip leading zeros untuk NIK angka murni
@@ -910,92 +910,84 @@ function shortUrl(url) {
 }
 
 // ============================================================
-// CSV FETCH — memory + session cache
+// CSV FETCH — timeout + in-memory/session cache per URL
 // ============================================================
-// Catatan performa:
-// Google Sheet CSV biasanya bagian paling lama, bukan HTML/CSS.
-// Cache ini bikin refresh dan pindah tab jauh lebih cepat tanpa fetch ulang.
 const _csvCache = {};
-const CSV_CACHE_TTL_MS = 5 * 60 * 1000; // 5 menit
+const CSV_CACHE_TTL_MS = 5 * 60 * 1000;
+const CSV_FETCH_TIMEOUT_MS = 25000;
 
-function csvCacheKey(url) {
+function cacheKeyForUrl(url) {
   try {
-    return 'kg_csv_' + btoa(url).replace(/[^a-zA-Z0-9]/g, '');
+    return 'kg_csv_' + btoa(unescape(encodeURIComponent(url))).replace(/=+$/g, '');
   } catch (_) {
-    return 'kg_csv_' + url.replace(/[^a-zA-Z0-9]/g, '');
+    return 'kg_csv_' + url;
   }
 }
 
-function readSessionCSVCache(url) {
-  try {
-    const raw = sessionStorage.getItem(csvCacheKey(url));
-    if (!raw) return null;
-    const cached = JSON.parse(raw);
-    if (!cached || !cached.t || !cached.text) return null;
-    if (Date.now() - cached.t > CSV_CACHE_TTL_MS) return null;
-    return cached.text;
-  } catch (_) {
-    return null;
-  }
-}
-
-function writeSessionCSVCache(url, text) {
-  try {
-    // Hindari quota error kalau CSV terlalu besar.
-    if (text.length < 3500000) {
-      sessionStorage.setItem(csvCacheKey(url), JSON.stringify({ t: Date.now(), text }));
-    }
-  } catch (_) {
-    // Cache opsional. Kalau penuh/ditolak browser, portal tetap jalan.
-  }
+function sheetNameForUrl(url) {
+  const found = Object.entries(TABS).find(([, value]) => value === url);
+  return found ? found[0] : 'sheet';
 }
 
 async function fetchCSV(url) {
-  if (_csvCache[url]) return _csvCache[url]; // already loaded in this page
+  if (_csvCache[url]) return _csvCache[url]; // already loaded, instant
 
-  const cachedText = readSessionCSVCache(url);
-  if (cachedText) {
-    const cachedData = parseCSV(cachedText);
-    _csvCache[url] = cachedData;
-    return cachedData;
-  }
-
-  const res = await fetch(url, { cache: 'force-cache' });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  const text = await res.text();
-  if (text.slice(0, 100).toLowerCase().includes('<html')) {
-    throw new Error('Sheet belum di-publish. Buka Google Sheet → File → Share → Publish to web.');
-  }
-  const data = parseCSV(text);
-  _csvCache[url] = data;
-  writeSessionCSVCache(url, text);
-  return data;
-}
-
-function clearCSVCache() {
-  Object.keys(_csvCache).forEach(k => delete _csvCache[k]);
+  const cacheKey = cacheKeyForUrl(url);
   try {
-    Object.keys(sessionStorage).forEach(k => { if (k.startsWith('kg_csv_')) sessionStorage.removeItem(k); });
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed && Array.isArray(parsed.data) && Date.now() - parsed.time < CSV_CACHE_TTL_MS) {
+        _csvCache[url] = parsed.data;
+        return parsed.data;
+      }
+    }
   } catch (_) {}
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CSV_FETCH_TIMEOUT_MS);
+
+  try {
+    // Cache-buster kecil supaya GitHub/browser tidak menahan data lama.
+    const sep = url.includes('?') ? '&' : '?';
+    const res = await fetch(url + sep + '_ts=' + Date.now(), {
+      signal: controller.signal,
+      cache: 'no-store'
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status + ' pada tab ' + sheetNameForUrl(url));
+
+    const text = await res.text();
+    if (text.slice(0, 200).toLowerCase().includes('<html')) {
+      throw new Error('Tab ' + sheetNameForUrl(url) + ' belum terbaca sebagai CSV. Pastikan Google Sheet sudah Publish to web sebagai Entire document.');
+    }
+
+    const data = parseCSV(text);
+    _csvCache[url] = data;
+    try {
+      sessionStorage.setItem(cacheKey, JSON.stringify({ time: Date.now(), data }));
+    } catch (_) {}
+    return data;
+  } catch (e) {
+    if (e && e.name === 'AbortError') {
+      throw new Error('Timeout mengambil tab ' + sheetNameForUrl(url) + '. Coba refresh, atau cek koneksi/publish Google Sheet.');
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // ============================================================
 // LOGIN
 // ============================================================
-// Preload hanya Access begitu DOM siap.
-// Database sengaja TIDAK di-preload di login page karena ukurannya paling besar
-// dan itu penyebab utama tombol login terasa lama, terutama untuk Admin/HR.
-let _preloadPromise = null;
-function startPreload() {
-  _preloadPromise = fetchCSV(TABS.access)
-    .then(data => { accessData = data; })
-    .catch(() => {});
-}
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', startPreload);
-} else {
-  startPreload();
-}
+// Preload hanya Access. Jangan preload Database di halaman login karena tab Database
+// biasanya paling besar dan bikin tombol login terasa lama.
+let _accessPromise = null;
+window.addEventListener('load', () => {
+  _accessPromise = fetchCSV(TABS.access)
+    .then(data => { accessData = data; return data; })
+    .catch(err => { console.warn('Preload Access gagal:', err); return null; });
+});
 
 async function doLogin() {
   const rawNik = document.getElementById('nik-input').value.trim();
@@ -1007,13 +999,13 @@ async function doLogin() {
   hideLoginError();
 
   try {
-    // Tunggu preload Access selesai kalau masih berjalan — tidak ada fetch ganda
-    if (_preloadPromise) await _preloadPromise;
+    // Tunggu preload Access selesai kalau masih berjalan — tidak ada fetch ganda.
+    if (_accessPromise) await _accessPromise;
 
-    // Login cepat: cek Access dulu. Database hanya dibaca kalau NIK tidak ada di Access.
+    // Fallback kalau preload Access gagal.
     if (accessData.length === 0) accessData = await fetchCSV(TABS.access);
 
-    // Cari NIK di tab access (Admin/HR/Employee layer tertentu)
+    // Cari NIK di tab access (HR/Admin)
     const user = accessData.find(r => {
       const userNIK = normalizeNIK(r['NIK'] || r['nik'] || '');
       return userNIK.toLowerCase() === nik.toLowerCase();
@@ -1027,7 +1019,7 @@ async function doLogin() {
       layer = getAccessLayer(user);
       found = true;
     } else {
-      // Bukan HR/Admin — cek di Database (4000+ baris, fetch sekali lalu di-cache)
+      // Kalau NIK tidak ada di Access, baru cek Database
       if (dbData.length === 0) dbData = await fetchCSV(TABS.database);
       const dbUser = dbData.find(r => {
         const dbNIK = normalizeNIK(r['NIK'] || r['nik'] || '');
@@ -1524,16 +1516,12 @@ async function loadParticipation() {
   }
 }
 
-let _partFilterTimer;
 function filterParticipation() {
-  clearTimeout(_partFilterTimer);
-  _partFilterTimer = setTimeout(() => {
-    const q = document.getElementById('part-search').value.toLowerCase();
-    filteredPartData = partData.filter(r => Object.values(r).some(v => String(v || '').toLowerCase().includes(q)));
-    partPage = 1;
-    document.getElementById('part-count').textContent = 'Menampilkan ' + filteredPartData.length + ' dari ' + partData.length + ' data';
-    renderParticipationTable();
-  }, 180);
+  const q = document.getElementById('part-search').value.toLowerCase();
+  filteredPartData = partData.filter(r => Object.values(r).some(v => v.toLowerCase().includes(q)));
+  partPage = 1;
+  document.getElementById('part-count').textContent = 'Menampilkan ' + filteredPartData.length + ' dari ' + partData.length + ' data';
+  renderParticipationTable();
 }
 
 function renderParticipationTable() {
