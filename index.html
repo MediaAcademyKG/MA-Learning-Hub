@@ -1100,36 +1100,42 @@ async function loadMyLearning() {
 }
 
 function buildEmployeeCard(emp) {
-  const name     = emp['NAMA'] || emp['nama'] || '-';
-  const nik      = emp['NIK']  || emp['nik']  || '-';
-  const status   = emp['Status'] || emp['STATUS'] || '-';
-  const position = emp['Position'] || emp['POSITION'] || emp['Posisi'] || '-';
-  const unit     = emp['Unit'] || emp['UNIT'] || '-';
-  const directorate = emp['Directorate'] || emp['DIRECTORATE'] || emp['Direktorat'] || '-';
+  const name        = emp['NAMA'] || emp['nama'] || '-';
+  const nik         = emp['NIK']  || emp['nik']  || '-';
+  const status      = emp['Status'] || '-';
+  const position    = emp['Position'] || '-';
+  const unit        = emp['Unit'] || '-';
+  const directorate = emp['Directorate'] || '-';
 
-  const allHours  = parseFloat(emp['All Hours'] || emp['ALL HOURS'] || 0) || 0;
-  const learningH = parseFloat(emp['Learning Hours'] || emp['LEARNING HOURS'] || 0) || 0;
-  const m1        = parseFloat(emp['First Mandatory'] || emp['FIRST MANDATORY'] || 0) || 0;
-  const m2        = parseFloat(emp['Second Mandatory'] || emp['SECOND MANDATORY'] || 0) || 0;
-  const m3        = parseFloat(emp['Third Mandatory'] || emp['THIRD MANDATORY'] || 0) || 0;
+  const allHours  = parseFloat(emp['All Hours']) || 0;
+  const learningH = parseFloat(emp['Learning Hours']) || 0;
+  const m1        = parseFloat(emp['First Mandatory']) || 0;
+  const m2        = parseFloat(emp['Second Mandatory']) || 0;
+  const m3        = parseFloat(emp['Third Mandatory']) || 0;
   const target    = 18;
   const progPct   = Math.min(100, Math.round((learningH / target) * 100));
-  let progClass   = learningH >= target ? 'prog-complete' : learningH > 0 ? 'prog-progress' : 'prog-inactive';
-  let progText    = learningH >= target ? '✅ Telah Memenuhi Target' : learningH > 0 ? '⏳ Sedang Berlangsung' : '❌ Belum Ada Aktivitas';
+  const progClass = learningH >= target ? 'prog-complete' : learningH > 0 ? 'prog-progress' : 'prog-inactive';
+  const progText  = learningH >= target ? '✅ Telah Memenuhi Target' : learningH > 0 ? '⏳ Sedang Berlangsung' : '❌ Belum Ada Aktivitas';
 
-  // Topic hours
-  const topics = ['Sustainability','Video Production','AI General','AI for Newsroom','AI Media Intelligence','Creative Thinking','Others'];
-  const topicEmoji = { 'Sustainability':'🌱','Video Production':'🎬','AI General':'🤖','AI for Newsroom':'📰','AI Media Intelligence':'🧠','Creative Thinking':'💡','Others':'📦' };
+  const topics = [
+    { key: 'Sustainability',        emoji: '🌱' },
+    { key: 'Video Production',      emoji: '🎬' },
+    { key: 'AI General',            emoji: '🤖' },
+    { key: 'AI for Newsroom',       emoji: '📰' },
+    { key: 'AI Media Intelligence', emoji: '🧠' },
+    { key: 'Creative Thinking',     emoji: '💡' },
+    { key: 'Others',                emoji: '📦' },
+  ];
 
   let topicsHTML = '';
-  topics.forEach(t => {
-    const hrs  = parseFloat(emp[t] || 0) || 0;
-    const sess = parseInt(emp[t + ' '] || emp[t+'_count'] || 0) || 0; // sessions col might vary
+  topics.forEach(({ key, emoji }) => {
+    const hrs   = parseFloat(emp[key + ' (jam)'])   || 0;
+    const kelas = parseInt(emp[key + ' (kelas)'])   || 0;
     topicsHTML += `
       <div class="topic-pill">
         <div>
-          <div class="topic-name">${topicEmoji[t]||'📌'} ${t}</div>
-          <div class="topic-sessions">${sess > 0 ? sess + ' sesi' : '-'}</div>
+          <div class="topic-name">${emoji} ${key}</div>
+          <div class="topic-sessions">${kelas > 0 ? kelas + ' kelas' : '-'}</div>
         </div>
         <div class="topic-hours">${hrs > 0 ? hrs.toFixed(1) + ' jam' : '-'}</div>
       </div>`;
@@ -1156,7 +1162,7 @@ function buildEmployeeCard(emp) {
         <div class="learn-icon">⏱️</div>
         <div class="learn-label">Total Semua Jam</div>
         <div class="learn-val">${allHours.toFixed(1)}</div>
-        <div class="learn-sub">jam keseluruhan</div>
+        <div class="learn-sub">termasuk 3 mandatory pertama</div>
       </div>
       <div class="learn-card">
         <div class="learn-icon">📖</div>
@@ -1167,24 +1173,24 @@ function buildEmployeeCard(emp) {
       <div class="learn-card" style="background:${m1>0?'#eff6ff':'white'}">
         <div class="learn-icon">🏅</div>
         <div class="learn-label">Mandatory 1</div>
-        <div class="learn-val" style="color:${m1>0?'var(--kg-mid)':'var(--gray-300)'}">${m1.toFixed(1)}</div>
-        <div class="learn-sub">jam</div>
+        <div class="learn-val" style="color:${m1>0?'var(--kg-mid)':'var(--gray-300)'}">${m1 > 0 ? m1.toFixed(1) + ' jam' : '-'}</div>
+        <div class="learn-sub">${m1>0 ? 'selesai' : 'belum'}</div>
       </div>
       <div class="learn-card" style="background:${m2>0?'#eff6ff':'white'}">
         <div class="learn-icon">🏅</div>
         <div class="learn-label">Mandatory 2</div>
-        <div class="learn-val" style="color:${m2>0?'var(--kg-mid)':'var(--gray-300)'}">${m2.toFixed(1)}</div>
-        <div class="learn-sub">jam</div>
+        <div class="learn-val" style="color:${m2>0?'var(--kg-mid)':'var(--gray-300)'}">${m2 > 0 ? m2.toFixed(1) + ' jam' : '-'}</div>
+        <div class="learn-sub">${m2>0 ? 'selesai' : 'belum'}</div>
       </div>
       <div class="learn-card" style="background:${m3>0?'#eff6ff':'white'}">
         <div class="learn-icon">🏅</div>
         <div class="learn-label">Mandatory 3</div>
-        <div class="learn-val" style="color:${m3>0?'var(--kg-mid)':'var(--gray-300)'}">${m3.toFixed(1)}</div>
-        <div class="learn-sub">jam</div>
+        <div class="learn-val" style="color:${m3>0?'var(--kg-mid)':'var(--gray-300)'}">${m3 > 0 ? m3.toFixed(1) + ' jam' : '-'}</div>
+        <div class="learn-sub">${m3>0 ? 'selesai' : 'belum'}</div>
       </div>
     </div>
 
-    <div style="margin-bottom:12px;">
+    <div style="margin-bottom:20px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
         <span style="font-size:0.8rem;font-weight:600;color:var(--gray-700);">Progress Learning Hours</span>
         <span style="font-size:0.8rem;color:var(--kg-mid);font-weight:700;">${learningH.toFixed(1)} / ${target} jam (${progPct}%)</span>
