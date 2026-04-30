@@ -724,11 +724,7 @@
 // ============================================================
 // CONFIG - GOOGLE SHEET
 // ============================================================
-// Link publish-to-web CSV yang kamu kirim. Ini yang dipakai utama untuk GitHub Pages.
 const PUBLISHED_CSV_BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAnkC8gLRwI8QsiKzbaaQV_w577RvjKKMRfQAw96ZCt0cNBfiIuCtqtm4fxzH8h5-X_0/pub?output=csv';
-
-// ID edit Sheet dipakai hanya sebagai fallback kalau published CSV gagal.
-const SHEET_ID = '11T58NlMVg2NAiygt3IDl0nR-UZJoWZBLbui1TFZmpFE';
 
 const TAB_GIDS = {
   access:        '185308502',
@@ -738,23 +734,28 @@ const TAB_GIDS = {
   searchbar:     '904954376',
 };
 
-function sheetUrls(gid) {
-  gid = String(gid);
-  return [
-    PUBLISHED_CSV_BASE + '&gid=' + encodeURIComponent(gid),
-    'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAnkC8gLRwI8QsiKzbaaQV_w577RvjKKMRfQAw96ZCt0cNBfiIuCtqtm4fxzH8h5-X_0/pub?gid=' + encodeURIComponent(gid) + '&single=true&output=csv',
-    'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&gid=' + encodeURIComponent(gid),
-    'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/export?format=csv&gid=' + encodeURIComponent(gid),
-  ];
+// Single URL per tab — no fallback chain, no delays
+function sheetUrl(gid) {
+  return PUBLISHED_CSV_BASE + '&gid=' + String(gid);
 }
 
 const TABS = {
-  access:        sheetUrls(TAB_GIDS.access),
-  database:      sheetUrls(TAB_GIDS.database),
-  participation: sheetUrls(TAB_GIDS.participation),
-  recap:         sheetUrls(TAB_GIDS.recap),
-  searchbar:     sheetUrls(TAB_GIDS.searchbar),
+  access:        sheetUrl(TAB_GIDS.access),
+  database:      sheetUrl(TAB_GIDS.database),
+  participation: sheetUrl(TAB_GIDS.participation),
+  recap:         sheetUrl(TAB_GIDS.recap),
+  searchbar:     sheetUrl(TAB_GIDS.searchbar),
 };
+
+// NIK normalization: strip leading zeros for numeric NIKs
+// e.g. "012345" → "12345", but "KG001" stays "KG001"
+function normalizeNIK(nik) {
+  const s = (nik || '').toString().trim();
+  // If purely numeric, strip leading zeros
+  if (/^\d+$/.test(s)) return String(parseInt(s, 10));
+  // Mixed (e.g. KG001) — keep as-is, just trim
+  return s;
+}
 
 const GOOGLE_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSf8U74xTaJLESZOAVU8qVGYPA-yK_9ypm8n6wyRMHTw_ihTRQ/viewform';
 
@@ -917,22 +918,13 @@ function shortUrl(url) {
 }
 
 async function fetchCSV(source) {
-  const urls = Array.isArray(source) ? source : [source];
-  const errors = [];
-  for (const url of urls) {
-    try {
-      const joiner = url.includes('?') ? '&' : '?';
-      const res = await fetch(url + joiner + '_cache=' + Date.now(), { cache: 'no-store' });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const text = await res.text();
-      const first = text.slice(0, 200).toLowerCase();
-      if (first.includes('<html') || first.includes('<!doctype')) throw new Error('response bukan CSV');
-      return parseCSV(text);
-    } catch (err) {
-      errors.push(shortUrl(url) + ': ' + err.message);
-    }
-  }
-  throw new Error('Gagal mengambil data dari Google Sheet (' + errors.join(' | ') + ')');
+  const url = Array.isArray(source) ? source[0] : source;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const text = await res.text();
+  const first = text.slice(0, 200).toLowerCase();
+  if (first.includes('<html') || first.includes('<!doctype')) throw new Error('Sheet belum di-publish. Buka Google Sheet → File → Share → Publish to web.');
+  return parseCSV(text);
 }
 
 // ============================================================
@@ -947,15 +939,18 @@ async function doLogin() {
   hideLoginError();
 
   try {
+    // Normalize input NIK — strip leading zeros for pure numbers
+    const inputNIK = normalizeNIK(nik);
+
     // Load access data
     if (accessData.length === 0) {
       accessData = await fetchCSV(TABS.access);
     }
 
-    // Find user in access sheet
+    // Find user in access sheet (compare normalized NIKs)
     const user = accessData.find(r => {
-      const userNIK = (r['NIK'] || r['nik'] || '').toString().trim().toLowerCase();
-      return userNIK === nik.toLowerCase();
+      const userNIK = normalizeNIK(r['NIK'] || r['nik'] || '');
+      return userNIK.toLowerCase() === inputNIK.toLowerCase();
     });
 
     // If not in access sheet, check if they exist in database (employee)
@@ -967,11 +962,11 @@ async function doLogin() {
       layer = getAccessLayer(user);
       found = true;
     } else {
-      // Try database tab
+      // Try database tab (also normalize NIK comparison)
       if (dbData.length === 0) dbData = await fetchCSV(TABS.database);
       const dbUser = dbData.find(r => {
-        const dbNIK = (r['NIK'] || r['nik'] || '').toString().trim().toLowerCase();
-        return dbNIK === nik.toLowerCase();
+        const dbNIK = normalizeNIK(r['NIK'] || r['nik'] || '');
+        return dbNIK.toLowerCase() === inputNIK.toLowerCase();
       });
       if (dbUser) {
         name = dbUser['NAMA'] || dbUser['nama'] || dbUser['Name'] || nik;
@@ -1088,8 +1083,8 @@ async function loadMyLearning() {
   const el = document.getElementById('my-learning-content');
   try {
     if (dbData.length === 0) dbData = await fetchCSV(TABS.database);
-    const nik = currentUser.nik.toLowerCase();
-    const emp = dbData.find(r => (r['NIK']||'').toString().trim().toLowerCase() === nik);
+    const nik = normalizeNIK(currentUser.nik).toLowerCase();
+    const emp = dbData.find(r => normalizeNIK(r['NIK']||'').toLowerCase() === nik);
     if (!emp) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">😕</div><div class="empty-text">Data learning untuk NIK ini belum tersedia.</div></div>'; return; }
     el.innerHTML = buildEmployeeCard(emp);
   } catch(e) {
@@ -1201,8 +1196,9 @@ function buildEmployeeCard(emp) {
 // HR SEARCH
 // ============================================================
 async function hrSearch() {
-  const nik = document.getElementById('hr-search-input').value.trim();
-  if (!nik) { showToast('Masukkan NIK terlebih dahulu', 'error'); return; }
+  const rawNik = document.getElementById('hr-search-input').value.trim();
+  if (!rawNik) { showToast('Masukkan NIK terlebih dahulu', 'error'); return; }
+  const nik = normalizeNIK(rawNik);
   const el = document.getElementById('hr-search-result');
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div class="loading-text">Mencari...</div></div>';
 
@@ -1210,12 +1206,12 @@ async function hrSearch() {
     if (dbData.length === 0) dbData = await fetchCSV(TABS.database);
     if (accessData.length === 0) accessData = await fetchCSV(TABS.access);
 
-    let emp = dbData.find(r => (r['NIK']||r['nik']||'').toString().trim().toLowerCase() === nik.toLowerCase());
+    let emp = dbData.find(r => normalizeNIK(r['NIK']||r['nik']||'').toLowerCase() === nik.toLowerCase());
 
     // Admin/HR bisa cari semua. Employee hanya sesuai layer dan tetap boleh lihat diri sendiri.
     if (emp && !(currentUser.role === 'HR' || currentUser.role === 'Admin')) {
-      const selfSearch = nik.toLowerCase() === currentUser.nik.toLowerCase();
-      const targetUserAccess = accessData.find(a => (a['NIK']||a['nik']||'').toString().trim().toLowerCase() === nik.toLowerCase());
+      const selfSearch = nik.toLowerCase() === normalizeNIK(currentUser.nik).toLowerCase();
+      const targetUserAccess = accessData.find(a => normalizeNIK(a['NIK']||a['nik']||'').toLowerCase() === nik.toLowerCase());
       const targetLayer = targetUserAccess ? getAccessLayer(targetUserAccess) : 'NL';
       if (!selfSearch && !canAccessLayer(currentUser.layer, targetLayer)) {
         el.innerHTML = '<div class="empty-state"><div class="empty-icon">🔒</div><div class="empty-text">Anda tidak memiliki akses untuk melihat data karyawan ini.</div></div>';
