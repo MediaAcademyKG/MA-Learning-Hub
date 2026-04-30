@@ -1099,42 +1099,19 @@ async function loadMyLearning() {
   }
 }
 
-// Helper: safely parse numbers, treating #N/A, blank, errors as 0
-function safeNum(val) {
-  if (!val || val === '' || typeof val === 'string' && val.trim().startsWith('#')) return 0;
-  const n = parseFloat(val);
-  return isNaN(n) ? 0 : n;
-}
-
-// Helper: find a column value by trying multiple key variants (handles extra spaces)
-function getCol(row, ...keys) {
-  // First try exact match
-  for (const k of keys) {
-    if (row[k] !== undefined && row[k] !== '') return row[k];
-  }
-  // Then try case-insensitive + trim match against all actual keys
-  const rowKeys = Object.keys(row);
-  for (const k of keys) {
-    const kNorm = k.toLowerCase().replace(/\s+/g, ' ').trim();
-    const found = rowKeys.find(rk => rk.toLowerCase().replace(/\s+/g, ' ').trim() === kNorm);
-    if (found !== undefined && row[found] !== '') return row[found];
-  }
-  return '';
-}
-
 function buildEmployeeCard(emp) {
-  const name        = getCol(emp, 'NAMA', 'nama', 'Name') || '-';
-  const nik         = getCol(emp, 'NIK', 'nik') || '-';
-  const status      = getCol(emp, 'Status', 'STATUS') || '-';
-  const position    = getCol(emp, 'Position', 'POSITION', 'Posisi') || '-';
-  const unit        = getCol(emp, 'Unit', 'UNIT') || '-';
-  const directorate = getCol(emp, 'Directorate', 'DIRECTORATE', 'Direktorat') || '-';
+  const name        = emp['NAMA'] || emp['nama'] || '-';
+  const nik         = emp['NIK']  || emp['nik']  || '-';
+  const status      = emp['Status'] || '-';
+  const position    = emp['Position'] || '-';
+  const unit        = emp['Unit'] || '-';
+  const directorate = emp['Directorate'] || '-';
 
-  const allHours  = safeNum(getCol(emp, 'All Hours', 'ALL HOURS'));
-  const learningH = safeNum(getCol(emp, 'Learning Hours', 'LEARNING HOURS'));
-  const m1        = safeNum(getCol(emp, 'First Mandatory', 'FIRST MANDATORY'));
-  const m2        = safeNum(getCol(emp, 'Second Mandatory', 'SECOND MANDATORY'));
-  const m3        = safeNum(getCol(emp, 'Third Mandatory', 'THIRD MANDATORY'));
+  const allHours  = parseFloat(emp['All Hours']) || 0;
+  const learningH = parseFloat(emp['Learning Hours']) || 0;
+  const m1        = parseFloat(emp['First Mandatory']) || 0;
+  const m2        = parseFloat(emp['Second Mandatory']) || 0;
+  const m3        = parseFloat(emp['Third Mandatory']) || 0;
   const target    = 18;
   const progPct   = Math.min(100, Math.round((learningH / target) * 100));
   const progClass = learningH >= target ? 'prog-complete' : learningH > 0 ? 'prog-progress' : 'prog-inactive';
@@ -1152,9 +1129,8 @@ function buildEmployeeCard(emp) {
 
   let topicsHTML = '';
   topics.forEach(({ key, emoji }) => {
-    // getCol handles extra spaces in column names like "AI General  (jam)"
-    const hrs   = safeNum(getCol(emp, key + ' (jam)', key + '  (jam)', key));
-    const kelas = Math.round(safeNum(getCol(emp, key + ' (kelas)', key + '  (kelas)')));
+    const hrs   = parseFloat(emp[key + ' (jam)'])   || 0;
+    const kelas = parseInt(emp[key + ' (kelas)'])   || 0;
     topicsHTML += `
       <div class="topic-pill">
         <div>
@@ -1289,40 +1265,32 @@ async function loadDashboard() {
 }
 
 function renderDashboard(el) {
-  // Filter baris valid saja (skip header duplikat atau baris kosong)
-  const validData = dbData.filter(r => {
-    const nik = (r['NIK'] || r['No NIK'] || '').toString().trim();
-    return nik !== '' && nik.toLowerCase() !== 'nik' && nik.toLowerCase() !== 'no nik';
-  });
+  // Try to use recap data, otherwise compute from database
+  const totalEmp = dbData.length;
+  const noActivity = dbData.filter(r => (parseFloat(r['All Hours']||0)||0) === 0).length;
+  const completed  = dbData.filter(r => (parseFloat(r['Learning Hours']||0)||0) >= 18).length;
+  const inProgress = totalEmp - noActivity - completed;
+  const totalHours = dbData.reduce((s,r) => s + (parseFloat(r['All Hours']||0)||0), 0);
 
-  const totalEmp   = validData.length;
-  const noActivity = validData.filter(r => safeNum(getCol(r, 'Learning Hours')) === 0).length;
-  const completed  = validData.filter(r => safeNum(getCol(r, 'Learning Hours')) >= 18).length;
-  const inProgress = validData.filter(r => { const lh = safeNum(getCol(r, 'Learning Hours')); return lh > 0 && lh < 18; }).length;
-  const totalHours = validData.reduce((s,r) => s + safeNum(getCol(r, 'Learning Hours')), 0);
-
-  // Mandatory dihitung dari 6 topik aktual (kolom jam per topik)
-  // Coba format "Topik (jam)" dulu, fallback ke "Topik"
-  const MAND_TOPICS = ['Sustainability','Video Production','AI General','AI for Newsroom','AI Media Intelligence','Creative Thinking'];
-  const getTopicHours = (r, t) => safeNum(getCol(r, t + ' (jam)', t + '  (jam)', t));
-  const countMand = r => MAND_TOPICS.filter(t => getTopicHours(r, t) > 0).length;
-
-  const mand3plus = validData.filter(r => countMand(r) >= 3).length;
-  const mand2     = validData.filter(r => countMand(r) === 2).length;
-  const mand1     = validData.filter(r => countMand(r) === 1).length;
-  const mand0     = validData.filter(r => countMand(r) === 0).length;
+  const mand3plus  = dbData.filter(r => {
+    const m1 = parseFloat(r['First Mandatory']||0)||0;
+    const m2 = parseFloat(r['Second Mandatory']||0)||0;
+    const m3 = parseFloat(r['Third Mandatory']||0)||0;
+    return (m1>0?1:0)+(m2>0?1:0)+(m3>0?1:0) >= 3;
+  }).length;
 
   // Per-unit summary
   const units = {};
-  validData.forEach(r => {
-    const unit = getCol(r, 'Unit', 'UNIT') || 'Lainnya';
+  dbData.forEach(r => {
+    const unit = r['Unit']||r['UNIT']||'Lainnya';
     if (!units[unit]) units[unit] = { total:0, noAct:0, inProg:0, comp:0, mand0:0, mand1:0, mand2:0, mand3p:0 };
     units[unit].total++;
-    const lh = safeNum(getCol(r, 'Learning Hours'));
-    if (lh === 0) units[unit].noAct++;
+    const lh = parseFloat(r['Learning Hours']||0)||0;
+    const ah = parseFloat(r['All Hours']||0)||0;
+    if (ah === 0) units[unit].noAct++;
     else if (lh >= 18) units[unit].comp++;
     else units[unit].inProg++;
-    const mc = countMand(r);
+    const mc = [r['First Mandatory'],r['Second Mandatory'],r['Third Mandatory']].filter(v=>(parseFloat(v)||0)>0).length;
     if (mc === 0) units[unit].mand0++;
     else if (mc === 1) units[unit].mand1++;
     else if (mc === 2) units[unit].mand2++;
@@ -1364,17 +1332,17 @@ function renderDashboard(el) {
       <div class="stat-card stat-blue">
         <div class="stat-label">Total Karyawan</div>
         <div class="stat-value">${totalEmp.toLocaleString('id-ID')}</div>
-        <div class="stat-detail">data aktif di database</div>
+        <div class="stat-detail">per 31 Maret 2026</div>
       </div>
       <div class="stat-card stat-green">
-        <div class="stat-label">Selesai ≥18 Jam</div>
+        <div class="stat-label">Selesai 18 Jam</div>
         <div class="stat-value">${completed.toLocaleString('id-ID')}</div>
         <div class="stat-detail">${compPct}% dari total</div>
       </div>
       <div class="stat-card stat-amber">
         <div class="stat-label">Sedang Berjalan</div>
         <div class="stat-value">${inProgress.toLocaleString('id-ID')}</div>
-        <div class="stat-detail">&lt; 18 jam, sudah ada aktivitas</div>
+        <div class="stat-detail">< 18 jam learning</div>
       </div>
       <div class="stat-card stat-red">
         <div class="stat-label">Belum Ada Aktivitas</div>
@@ -1382,24 +1350,14 @@ function renderDashboard(el) {
         <div class="stat-detail">${(totalEmp>0?((noActivity/totalEmp)*100).toFixed(1):0)}% dari total</div>
       </div>
       <div class="stat-card stat-cyan">
-        <div class="stat-label">≥3 Mandatory Topics</div>
+        <div class="stat-label">≥3 Mandatory</div>
         <div class="stat-value">${mand3plus.toLocaleString('id-ID')}</div>
         <div class="stat-detail">${mandPct}% dari total</div>
-      </div>
-      <div class="stat-card stat-amber">
-        <div class="stat-label">2 Mandatory Topics</div>
-        <div class="stat-value">${mand2.toLocaleString('id-ID')}</div>
-        <div class="stat-detail">${(totalEmp>0?((mand2/totalEmp)*100).toFixed(1):0)}% dari total</div>
-      </div>
-      <div class="stat-card stat-red">
-        <div class="stat-label">0–1 Mandatory Topics</div>
-        <div class="stat-value">${(mand0+mand1).toLocaleString('id-ID')}</div>
-        <div class="stat-detail">${(totalEmp>0?(((mand0+mand1)/totalEmp)*100).toFixed(1):0)}% dari total</div>
       </div>
       <div class="stat-card stat-blue">
         <div class="stat-label">Total Jam Belajar</div>
         <div class="stat-value">${totalHours.toFixed(0)}</div>
-        <div class="stat-detail">jam learning hours</div>
+        <div class="stat-detail">jam keseluruhan</div>
       </div>
     </div>
 
@@ -1415,7 +1373,7 @@ function renderDashboard(el) {
               <th style="text-align:center;">%</th>
               <th style="text-align:center;">In Progress</th>
               <th style="text-align:center;">%</th>
-              <th style="text-align:center;">Selesai ≥18 Jam</th>
+              <th style="text-align:center;">Selesai 18 Jam</th>
               <th style="text-align:center;">%</th>
             </tr>
           </thead>
@@ -1432,7 +1390,7 @@ function renderDashboard(el) {
             <tr>
               <th>Unit</th>
               <th style="text-align:center;">Jml Karyawan</th>
-              <th style="text-align:center;">0 Mandatory</th>
+              <th style="text-align:center;">Belum Mandatory</th>
               <th style="text-align:center;">%</th>
               <th style="text-align:center;">1 Mandatory</th>
               <th style="text-align:center;">2 Mandatory</th>
