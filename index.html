@@ -724,7 +724,8 @@
 // ============================================================
 // CONFIG - GOOGLE SHEET
 // ============================================================
-const PUBLISHED_CSV_BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAnkC8gLRwI8QsiKzbaaQV_w577RvjKKMRfQAw96ZCt0cNBfiIuCtqtm4fxzH8h5-X_0/pub?output=csv';
+// &single=true mencegah 307 redirect dari Google — ini kunci kecepatan
+const PUB = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAnkC8gLRwI8QsiKzbaaQV_w577RvjKKMRfQAw96ZCt0cNBfiIuCtqtm4fxzH8h5-X_0/pub';
 
 const TAB_GIDS = {
   access:        '185308502',
@@ -734,9 +735,9 @@ const TAB_GIDS = {
   searchbar:     '904954376',
 };
 
-// Single URL per tab — no fallback chain, no delays
+// single=true + output=csv langsung ke tab → tidak ada redirect 307
 function sheetUrl(gid) {
-  return PUBLISHED_CSV_BASE + '&gid=' + String(gid);
+  return PUB + '?single=true&output=csv&gid=' + String(gid);
 }
 
 const TABS = {
@@ -747,13 +748,11 @@ const TABS = {
   searchbar:     sheetUrl(TAB_GIDS.searchbar),
 };
 
-// NIK normalization: strip leading zeros for numeric NIKs
-// e.g. "012345" → "12345", but "KG001" stays "KG001"
+// NIK normalization: strip leading zeros untuk NIK angka murni
+// "012345" → "12345", "KG001" → "KG001"
 function normalizeNIK(nik) {
   const s = (nik || '').toString().trim();
-  // If purely numeric, strip leading zeros
   if (/^\d+$/.test(s)) return String(parseInt(s, 10));
-  // Mixed (e.g. KG001) — keep as-is, just trim
   return s;
 }
 
@@ -917,67 +916,76 @@ function shortUrl(url) {
   }
 }
 
-async function fetchCSV(source) {
-  const url = Array.isArray(source) ? source[0] : source;
+// ============================================================
+// CSV FETCH — single request, in-memory cache per URL
+// ============================================================
+const _csvCache = {};
+async function fetchCSV(url) {
+  if (_csvCache[url]) return _csvCache[url]; // already loaded, instant
   const res = await fetch(url);
   if (!res.ok) throw new Error('HTTP ' + res.status);
   const text = await res.text();
-  const first = text.slice(0, 200).toLowerCase();
-  if (first.includes('<html') || first.includes('<!doctype')) throw new Error('Sheet belum di-publish. Buka Google Sheet → File → Share → Publish to web.');
-  return parseCSV(text);
+  if (text.slice(0, 100).toLowerCase().includes('<html')) {
+    throw new Error('Sheet belum di-publish. Buka Google Sheet → File → Share → Publish to web.');
+  }
+  const data = parseCSV(text);
+  _csvCache[url] = data; // cache in memory
+  return data;
 }
 
 // ============================================================
 // LOGIN
 // ============================================================
+// Preload access tab di background setelah halaman terbuka
+// supaya saat user klik login, data sudah siap
+window.addEventListener('load', () => {
+  fetchCSV(TABS.access).then(data => { accessData = data; }).catch(() => {});
+});
+
 async function doLogin() {
-  const nik = document.getElementById('nik-input').value.trim();
-  if (!nik) { showLoginError('Silakan masukkan NIK Anda.'); return; }
+  const rawNik = document.getElementById('nik-input').value.trim();
+  if (!rawNik) { showLoginError('Silakan masukkan NIK Anda.'); return; }
+  const nik = normalizeNIK(rawNik);
 
   const btn = document.getElementById('btn-login');
   btn.disabled = true; btn.textContent = 'Memuat...';
   hideLoginError();
 
   try {
-    // Normalize input NIK — strip leading zeros for pure numbers
-    const inputNIK = normalizeNIK(nik);
-
-    // Load access data
+    // Access tab: pakai cache kalau sudah preloaded
     if (accessData.length === 0) {
       accessData = await fetchCSV(TABS.access);
     }
 
-    // Find user in access sheet (compare normalized NIKs)
+    // Cari NIK di tab access (HR/Admin)
     const user = accessData.find(r => {
       const userNIK = normalizeNIK(r['NIK'] || r['nik'] || '');
-      return userNIK.toLowerCase() === inputNIK.toLowerCase();
+      return userNIK.toLowerCase() === nik.toLowerCase();
     });
 
-    // If not in access sheet, check if they exist in database (employee)
-    let role = 'Employee'; let layer = 'NL'; let name = nik; let found = false;
+    let role = 'Employee'; let layer = 'NL'; let name = rawNik; let found = false;
 
     if (user) {
-      name  = user['nama'] || user['NAMA'] || user['Name'] || nik;
+      name  = user['nama'] || user['NAMA'] || user['Name'] || rawNik;
       role  = getAccessRole(user);
       layer = getAccessLayer(user);
       found = true;
     } else {
-      // Try database tab (also normalize NIK comparison)
+      // Bukan HR/Admin — cek di Database (4000+ baris, fetch sekali lalu di-cache)
       if (dbData.length === 0) dbData = await fetchCSV(TABS.database);
       const dbUser = dbData.find(r => {
         const dbNIK = normalizeNIK(r['NIK'] || r['nik'] || '');
-        return dbNIK.toLowerCase() === inputNIK.toLowerCase();
+        return dbNIK.toLowerCase() === nik.toLowerCase();
       });
       if (dbUser) {
-        name = dbUser['NAMA'] || dbUser['nama'] || dbUser['Name'] || nik;
+        name  = dbUser['NAMA'] || dbUser['nama'] || dbUser['Name'] || rawNik;
         found = true;
-        role = 'Employee'; layer = 'NL';
       }
     }
 
     if (!found) { showLoginError('NIK tidak ditemukan. Pastikan NIK yang Anda masukkan benar.'); resetLoginButton(); return; }
 
-    // Check maintenance — only Admin can pass
+    // Cek maintenance — hanya Admin yang bisa lewat
     if (getMaintenanceState() && role !== 'Admin') {
       updateLoginMaintenanceNotice(true);
       showLoginError('Mode Maintenance sedang aktif. Karyawan/HR belum dapat mengakses portal. Admin tetap dapat login.');
@@ -985,7 +993,7 @@ async function doLogin() {
       return;
     }
 
-    currentUser = { nik, name, role, layer };
+    currentUser = { nik: rawNik, name, role, layer };
     initApp();
 
   } catch(e) {
