@@ -559,7 +559,6 @@
     </div>
     <div class="login-heading">Selamat Datang</div>
     <div class="login-sub">Masukkan NIK Anda untuk mengakses portal</div>
-    <div id="preload-status" style="font-size:0.72rem;text-align:center;margin-bottom:4px;min-height:16px;transition:color 0.4s;color:#94a3b8;"></div>
     <div class="login-maint-alert" id="login-maint-alert">&#9888;&#65039; <strong>Portal sedang maintenance.</strong><br>Untuk sementara karyawan/HR tidak dapat mengakses portal. Admin tetap dapat login untuk mengelola sistem.</div>
     <label class="field-label" for="nik-input">NIK Karyawan</label>
     <input class="field-input" id="nik-input" type="text" placeholder="Contoh: 12345 atau KG001" autocomplete="off" autofocus>
@@ -730,10 +729,8 @@
 const SHEET_ID = '11T58NlMVg2NAiygt3IDl0nR-UZJoWZBLbui1TFZmpFE';
 
 function sheetUrl(tabName) {
-  // /export?format=csv is a direct file export — significantly faster than gviz/tq
-  // gviz/tq has to spin up a visualization server which causes 15-25s cold start delays
   return 'https://docs.google.com/spreadsheets/d/' + SHEET_ID +
-    '/export?format=csv&sheet=' + encodeURIComponent(tabName);
+    '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent(tabName);
 }
 
 const TABS = {
@@ -917,29 +914,15 @@ function shortUrl(url) {
 // ============================================================
 const _csvCache = {};
 async function fetchCSV(url) {
-  if (_csvCache[url]) return _csvCache[url]; // instant on repeat calls
-
-  let res;
-  try {
-    res = await fetch(url);
-  } catch(e) {
-    throw new Error('Tidak dapat terhubung ke Google Sheet. Periksa koneksi internet Anda.');
-  }
-
-  // /export returns 401/302 if sheet is not published — give clear message
-  if (res.status === 401 || res.status === 403) {
+  if (_csvCache[url]) return _csvCache[url]; // already loaded, instant
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const text = await res.text();
+  if (text.slice(0, 100).toLowerCase().includes('<html')) {
     throw new Error('Sheet belum di-publish. Buka Google Sheet → File → Share → Publish to web.');
   }
-  if (!res.ok) throw new Error('Gagal memuat data (HTTP ' + res.status + ')');
-
-  const text = await res.text();
-  if (text.slice(0, 200).toLowerCase().includes('<!doctype html') ||
-      text.slice(0, 200).toLowerCase().includes('<html')) {
-    throw new Error('Sheet belum di-publish ke web. Pastikan semua tab sudah dipublish.');
-  }
-
   const data = parseCSV(text);
-  _csvCache[url] = data;
+  _csvCache[url] = data; // cache in memory
   return data;
 }
 
@@ -949,38 +932,11 @@ async function fetchCSV(url) {
 // Preload access DAN database di background begitu halaman terbuka
 // Simpan sebagai Promise — kalau login diklik sebelum selesai, tinggal await Promise yang sama
 let _preloadPromise = null;
-let _accessPromise  = null;
-let _dbPromise      = null;
-
-function startPreload() {
-  if (_accessPromise) return;
-  // Access is small — fetch first, login only needs this
-  _accessPromise = fetchCSV(TABS.access)
-    .then(data => { accessData = data; return data; })
-    .catch(() => []);
-  // DB is large — fetch in parallel, used only if NIK not in Access
-  _dbPromise = fetchCSV(TABS.database)
-    .then(data => { dbData = data; return data; })
-    .catch(() => []);
-  _preloadPromise = Promise.all([_accessPromise, _dbPromise]);
-}
-
-// Start immediately when script loads — not waiting for 'load' event
-startPreload();
-
-// Update status indicator once DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-  const el = document.getElementById('preload-status');
-  if (!el) return;
-  el.textContent = 'Memuat data...';
-  if (_accessPromise) _accessPromise.then(() => {
-    el.textContent = 'Data akses siap ✔';
-    el.style.color = '#64b5f6';
-  }).catch(() => {});
-  if (_dbPromise) _dbPromise.then(() => {
-    el.textContent = 'Data siap ✔  Silakan masukkan NIK';
-    el.style.color = '#4ade80';
-  }).catch(() => { el.textContent = ''; });
+window.addEventListener('load', () => {
+  _preloadPromise = Promise.all([
+    fetchCSV(TABS.access).then(data => { accessData = data; }),
+    fetchCSV(TABS.database).then(data => { dbData = data; })
+  ]).catch(() => {});
 });
 
 async function doLogin() {
@@ -993,9 +949,12 @@ async function doLogin() {
   hideLoginError();
 
   try {
-    // Hanya tunggu Access dulu (kecil & cepat) — DB sudah loading paralel
-    if (_accessPromise) await _accessPromise;
+    // Tunggu preload selesai kalau masih berjalan — tidak ada fetch ganda
+    if (_preloadPromise) await _preloadPromise;
+
+    // Fallback kalau preload gagal
     if (accessData.length === 0) accessData = await fetchCSV(TABS.access);
+    if (dbData.length === 0) dbData = await fetchCSV(TABS.database);
 
     // Cari NIK di tab access (HR/Admin)
     const user = accessData.find(r => {
@@ -1011,8 +970,7 @@ async function doLogin() {
       layer = getAccessLayer(user);
       found = true;
     } else {
-      // Bukan HR/Admin — tunggu DB yang sudah loading di background
-      if (_dbPromise) await _dbPromise;
+      // Bukan HR/Admin — cek di Database (4000+ baris, fetch sekali lalu di-cache)
       if (dbData.length === 0) dbData = await fetchCSV(TABS.database);
       const dbUser = dbData.find(r => {
         const dbNIK = normalizeNIK(r['NIK'] || r['nik'] || '');
@@ -1171,8 +1129,9 @@ function buildEmployeeCard(emp) {
 
   let topicsHTML = '';
   topics.forEach(({ key, emoji }) => {
-    const hrs   = parseFloat(emp[key + ' (jam)'])   || 0;
-    const kelas = parseInt(emp[key + ' (kelas)'])   || 0;
+    // Handle multiple possible column name formats from Google Sheet
+    const hrs   = parseFloat(emp[key + ' (jam)'] || emp[key] || 0) || 0;
+    const kelas = parseInt(emp[key + ' (kelas)'] || emp[key + ' (kelas)'] || 0) || 0;
     topicsHTML += `
       <div class="topic-pill">
         <div>
@@ -1307,30 +1266,34 @@ async function loadDashboard() {
 }
 
 function renderDashboard(el) {
-  // Hanya hitung baris dengan NIK valid
+  // Filter baris valid saja (skip header duplikat atau baris kosong)
   const validData = dbData.filter(r => {
     const nik = (r['NIK'] || r['No NIK'] || '').toString().trim();
     return nik !== '' && nik.toLowerCase() !== 'nik' && nik.toLowerCase() !== 'no nik';
   });
 
   const totalEmp   = validData.length;
-  // noActivity = Learning Hours 0 (sesuai Recap tab)
+  // noActivity = Learning Hours = 0
   const noActivity = validData.filter(r => (parseFloat(r['Learning Hours']||0)||0) === 0).length;
   const completed  = validData.filter(r => (parseFloat(r['Learning Hours']||0)||0) >= 18).length;
-  const inProgress = validData.filter(r => { const lh=parseFloat(r['Learning Hours']||0)||0; return lh>0&&lh<18; }).length;
+  const inProgress = validData.filter(r => { const lh = parseFloat(r['Learning Hours']||0)||0; return lh > 0 && lh < 18; }).length;
   const totalHours = validData.reduce((s,r) => s + (parseFloat(r['Learning Hours']||0)||0), 0);
 
-  // Mandatory: hitung dari 6 topik aktual, bukan kolom First/Second/Third Mandatory
+  // Mandatory dihitung dari 6 topik aktual (kolom jam per topik)
+  // Coba format "Topik (jam)" dulu, fallback ke "Topik"
   const MAND_TOPICS = ['Sustainability','Video Production','AI General','AI for Newsroom','AI Media Intelligence','Creative Thinking'];
-  const countMand = r => MAND_TOPICS.filter(t => (parseFloat(r[t]||0)||0) > 0).length;
+  const getTopicHours = (r, t) => parseFloat(r[t + ' (jam)'] || r[t] || 0) || 0;
+  const countMand = r => MAND_TOPICS.filter(t => getTopicHours(r, t) > 0).length;
+
   const mand3plus = validData.filter(r => countMand(r) >= 3).length;
   const mand2     = validData.filter(r => countMand(r) === 2).length;
   const mand1     = validData.filter(r => countMand(r) === 1).length;
   const mand0     = validData.filter(r => countMand(r) === 0).length;
 
+  // Per-unit summary
   const units = {};
   validData.forEach(r => {
-    const unit = r['Unit']||r['UNIT']||'Lainnya';
+    const unit = r['Unit'] || r['UNIT'] || 'Lainnya';
     if (!units[unit]) units[unit] = { total:0, noAct:0, inProg:0, comp:0, mand0:0, mand1:0, mand2:0, mand3p:0 };
     units[unit].total++;
     const lh = parseFloat(r['Learning Hours']||0)||0;
@@ -1379,17 +1342,17 @@ function renderDashboard(el) {
       <div class="stat-card stat-blue">
         <div class="stat-label">Total Karyawan</div>
         <div class="stat-value">${totalEmp.toLocaleString('id-ID')}</div>
-        <div class="stat-detail">per 31 Maret 2026</div>
+        <div class="stat-detail">data aktif di database</div>
       </div>
       <div class="stat-card stat-green">
-        <div class="stat-label">Selesai 18 Jam</div>
+        <div class="stat-label">Selesai ≥18 Jam</div>
         <div class="stat-value">${completed.toLocaleString('id-ID')}</div>
         <div class="stat-detail">${compPct}% dari total</div>
       </div>
       <div class="stat-card stat-amber">
         <div class="stat-label">Sedang Berjalan</div>
         <div class="stat-value">${inProgress.toLocaleString('id-ID')}</div>
-        <div class="stat-detail">< 18 jam learning</div>
+        <div class="stat-detail">&lt; 18 jam, sudah ada aktivitas</div>
       </div>
       <div class="stat-card stat-red">
         <div class="stat-label">Belum Ada Aktivitas</div>
@@ -1397,7 +1360,7 @@ function renderDashboard(el) {
         <div class="stat-detail">${(totalEmp>0?((noActivity/totalEmp)*100).toFixed(1):0)}% dari total</div>
       </div>
       <div class="stat-card stat-cyan">
-        <div class="stat-label">&#8805;3 Mandatory Topics</div>
+        <div class="stat-label">≥3 Mandatory Topics</div>
         <div class="stat-value">${mand3plus.toLocaleString('id-ID')}</div>
         <div class="stat-detail">${mandPct}% dari total</div>
       </div>
@@ -1407,14 +1370,14 @@ function renderDashboard(el) {
         <div class="stat-detail">${(totalEmp>0?((mand2/totalEmp)*100).toFixed(1):0)}% dari total</div>
       </div>
       <div class="stat-card stat-red">
-        <div class="stat-label">0-1 Mandatory Topics</div>
+        <div class="stat-label">0–1 Mandatory Topics</div>
         <div class="stat-value">${(mand0+mand1).toLocaleString('id-ID')}</div>
         <div class="stat-detail">${(totalEmp>0?(((mand0+mand1)/totalEmp)*100).toFixed(1):0)}% dari total</div>
       </div>
       <div class="stat-card stat-blue">
         <div class="stat-label">Total Jam Belajar</div>
         <div class="stat-value">${totalHours.toFixed(0)}</div>
-        <div class="stat-detail">jam keseluruhan</div>
+        <div class="stat-detail">jam learning hours</div>
       </div>
     </div>
 
@@ -1430,7 +1393,7 @@ function renderDashboard(el) {
               <th style="text-align:center;">%</th>
               <th style="text-align:center;">In Progress</th>
               <th style="text-align:center;">%</th>
-              <th style="text-align:center;">Selesai 18 Jam</th>
+              <th style="text-align:center;">Selesai ≥18 Jam</th>
               <th style="text-align:center;">%</th>
             </tr>
           </thead>
@@ -1447,7 +1410,7 @@ function renderDashboard(el) {
             <tr>
               <th>Unit</th>
               <th style="text-align:center;">Jml Karyawan</th>
-              <th style="text-align:center;">Belum Mandatory</th>
+              <th style="text-align:center;">0 Mandatory</th>
               <th style="text-align:center;">%</th>
               <th style="text-align:center;">1 Mandatory</th>
               <th style="text-align:center;">2 Mandatory</th>
