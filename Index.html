@@ -1,0 +1,1472 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MA Learning Hub — KG Media</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  /* ===================== VARIABLES ===================== */
+  :root {
+    --kg-navy:    #0a1f44;
+    --kg-blue:    #0d4a8f;
+    --kg-mid:     #1565c0;
+    --kg-light:   #1e88e5;
+    --kg-sky:     #42a5f5;
+    --kg-cyan:    #29b6f6;
+    --kg-accent:  #00bcd4;
+    --kg-grad:    linear-gradient(135deg, #0a1f44 0%, #0d4a8f 50%, #1565c0 100%);
+    --kg-grad2:   linear-gradient(135deg, #1565c0, #29b6f6);
+    --white:      #ffffff;
+    --gray-50:    #f8fafc;
+    --gray-100:   #f1f5f9;
+    --gray-200:   #e2e8f0;
+    --gray-300:   #cbd5e1;
+    --gray-500:   #64748b;
+    --gray-700:   #334155;
+    --gray-900:   #0f172a;
+    --success:    #10b981;
+    --warning:    #f59e0b;
+    --danger:     #ef4444;
+    --radius:     12px;
+    --radius-lg:  20px;
+    --shadow:     0 4px 24px rgba(10,31,68,0.12);
+    --shadow-lg:  0 8px 48px rgba(10,31,68,0.20);
+  }
+
+  /* ===================== RESET ===================== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--gray-50);
+    color: var(--gray-900);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ===================== MAINTENANCE SCREEN ===================== */
+  #maintenance-screen {
+    display: none;
+    position: fixed; inset: 0; z-index: 9999;
+    background: var(--kg-grad);
+    flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center;
+    padding: 40px;
+  }
+  #maintenance-screen.active { display: flex; }
+  .maint-icon { font-size: 80px; margin-bottom: 24px; animation: spin-slow 8s linear infinite; }
+  @keyframes spin-slow { to { transform: rotate(360deg); } }
+  .maint-title { font-family: 'Sora', sans-serif; font-size: 2rem; color: white; font-weight: 700; margin-bottom: 12px; }
+  .maint-sub { color: rgba(255,255,255,0.75); font-size: 1rem; max-width: 400px; line-height: 1.6; }
+
+  /* ===================== LOGIN SCREEN ===================== */
+  #login-screen {
+    display: flex;
+    min-height: 100vh;
+    align-items: center;
+    justify-content: center;
+    background: var(--kg-grad);
+    position: relative;
+    overflow: hidden;
+  }
+  .login-bg-shapes { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .login-bg-shapes span {
+    position: absolute; border-radius: 50%;
+    background: rgba(255,255,255,0.04);
+    animation: float 12s ease-in-out infinite;
+  }
+  .login-bg-shapes span:nth-child(1) { width:400px;height:400px;top:-100px;right:-100px;animation-delay:0s; }
+  .login-bg-shapes span:nth-child(2) { width:250px;height:250px;bottom:50px;left:-60px;animation-delay:3s; }
+  .login-bg-shapes span:nth-child(3) { width:160px;height:160px;top:40%;left:30%;animation-delay:6s; }
+  @keyframes float {
+    0%,100% { transform: translateY(0) scale(1); }
+    50%      { transform: translateY(-30px) scale(1.05); }
+  }
+  .login-card {
+    background: white;
+    border-radius: var(--radius-lg);
+    padding: 48px 40px;
+    width: 100%; max-width: 420px;
+    box-shadow: var(--shadow-lg);
+    position: relative; z-index: 1;
+    animation: fadeUp 0.6s ease both;
+  }
+  @keyframes fadeUp {
+    from { opacity:0; transform:translateY(30px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
+  .login-logo {
+    text-align: center; margin-bottom: 32px;
+  }
+  .login-logo img { height: 52px; object-fit: contain; }
+  .login-logo .tagline { color: var(--kg-mid); font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; margin-top: 6px; font-weight: 500; }
+  .login-heading { font-family: 'Sora', sans-serif; font-size: 1.5rem; font-weight: 700; color: var(--kg-navy); margin-bottom: 6px; }
+  .login-sub { color: var(--gray-500); font-size: 0.875rem; margin-bottom: 28px; }
+  .field-label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--gray-700); margin-bottom: 6px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .field-input {
+    width: 100%; padding: 14px 16px;
+    border: 2px solid var(--gray-200);
+    border-radius: var(--radius);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 1rem;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    color: var(--gray-900);
+    background: var(--gray-50);
+  }
+  .field-input:focus { border-color: var(--kg-light); box-shadow: 0 0 0 4px rgba(21,101,192,0.1); background: white; }
+  .btn-primary {
+    width: 100%; padding: 15px;
+    background: var(--kg-grad2);
+    color: white; border: none;
+    border-radius: var(--radius);
+    font-family: 'Sora', sans-serif;
+    font-size: 0.95rem; font-weight: 600;
+    cursor: pointer; margin-top: 20px;
+    transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
+    letter-spacing: 0.03em;
+    box-shadow: 0 4px 16px rgba(21,101,192,0.3);
+  }
+  .btn-primary:hover { opacity: 0.92; transform: translateY(-1px); box-shadow: 0 6px 24px rgba(21,101,192,0.4); }
+  .btn-primary:active { transform: translateY(0); }
+  .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+  .login-error {
+    background: #fef2f2; border: 1px solid #fecaca;
+    color: #dc2626; border-radius: var(--radius);
+    padding: 12px 16px; font-size: 0.85rem;
+    margin-top: 16px; display: none;
+  }
+  .login-error.show { display: block; }
+  .login-footer { text-align: center; color: var(--gray-300); font-size: 0.75rem; margin-top: 32px; }
+
+  /* ===================== APP SHELL ===================== */
+  #app { display: none; min-height: 100vh; flex-direction: column; }
+  #app.active { display: flex; }
+
+  /* ===================== HEADER ===================== */
+  .app-header {
+    background: var(--kg-grad);
+    padding: 0 32px;
+    height: 64px;
+    display: flex; align-items: center;
+    justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+    box-shadow: 0 2px 16px rgba(10,31,68,0.3);
+  }
+  .header-logo { display: flex; align-items: center; gap: 12px; }
+  .header-logo img { height: 36px; filter: brightness(0) invert(1); object-fit: contain; }
+  .header-logo .portal-label {
+    color: rgba(255,255,255,0.7);
+    font-size: 0.72rem; letter-spacing: 0.12em;
+    text-transform: uppercase; font-weight: 500;
+    border-left: 1px solid rgba(255,255,255,0.25);
+    padding-left: 12px;
+  }
+  .header-right { display: flex; align-items: center; gap: 16px; }
+  .user-badge {
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(255,255,255,0.12);
+    border-radius: 40px; padding: 6px 14px 6px 10px;
+    color: white; font-size: 0.82rem;
+  }
+  .user-avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--kg-accent);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.75rem; font-weight: 700; color: white;
+  }
+  .user-role-badge {
+    font-size: 0.65rem; padding: 2px 8px;
+    border-radius: 20px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .role-admin { background: #fbbf24; color: #78350f; }
+  .role-hr { background: var(--kg-accent); color: var(--kg-navy); }
+  .role-employee { background: rgba(255,255,255,0.2); color: white; }
+  .btn-logout {
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.2);
+    color: white; border-radius: 8px;
+    padding: 6px 14px; font-size: 0.8rem;
+    cursor: pointer; transition: background 0.2s;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .btn-logout:hover { background: rgba(255,255,255,0.22); }
+
+  /* ===================== NAV TABS ===================== */
+  .app-nav {
+    background: var(--kg-navy);
+    padding: 0 32px;
+    display: flex; align-items: center;
+    gap: 2px; overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .app-nav::-webkit-scrollbar { display: none; }
+  .nav-tab {
+    padding: 14px 20px;
+    color: rgba(255,255,255,0.55);
+    font-size: 0.82rem; font-weight: 500;
+    cursor: pointer; border-bottom: 3px solid transparent;
+    white-space: nowrap; transition: color 0.2s, border-color 0.2s;
+    display: flex; align-items: center; gap: 7px;
+    user-select: none;
+  }
+  .nav-tab:hover { color: rgba(255,255,255,0.85); }
+  .nav-tab.active { color: white; border-bottom-color: var(--kg-cyan); }
+  .nav-tab .tab-icon { font-size: 0.9em; }
+
+  /* ===================== CONTENT AREA ===================== */
+  .app-content { flex: 1; padding: 32px; max-width: 1400px; width: 100%; margin: 0 auto; }
+  .tab-panel { display: none; animation: fadeIn 0.3s ease; }
+  .tab-panel.active { display: block; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+
+  /* ===================== MAINTENANCE BANNER ===================== */
+  .maintenance-banner {
+    display: none;
+    background: linear-gradient(135deg, #dc2626, #f97316);
+    color: white; padding: 12px 20px;
+    font-size: 0.85rem; font-weight: 500;
+    text-align: center; align-items: center; gap: 10px;
+    justify-content: center;
+  }
+  .maintenance-banner.show { display: flex; }
+
+  /* ===================== PAGE HEADER ===================== */
+  .page-header { margin-bottom: 28px; }
+  .page-title { font-family: 'Sora', sans-serif; font-size: 1.6rem; font-weight: 700; color: var(--kg-navy); }
+  .page-sub { color: var(--gray-500); font-size: 0.875rem; margin-top: 4px; }
+
+  /* ===================== CARDS ===================== */
+  .card {
+    background: white; border-radius: var(--radius-lg);
+    box-shadow: var(--shadow); padding: 24px;
+    border: 1px solid var(--gray-100);
+  }
+  .card-title { font-family: 'Sora', sans-serif; font-size: 1rem; font-weight: 600; color: var(--kg-navy); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+
+  /* ===================== STAT CARDS ===================== */
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .stat-card {
+    background: white; border-radius: var(--radius);
+    padding: 20px; border: 1px solid var(--gray-100);
+    box-shadow: var(--shadow);
+    position: relative; overflow: hidden;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+  .stat-card::before {
+    content: ''; position: absolute;
+    top: 0; left: 0; right: 0; height: 4px;
+  }
+  .stat-blue::before  { background: var(--kg-grad2); }
+  .stat-green::before { background: linear-gradient(90deg, #10b981, #34d399); }
+  .stat-amber::before { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+  .stat-red::before   { background: linear-gradient(90deg, #ef4444, #f87171); }
+  .stat-cyan::before  { background: linear-gradient(90deg, #06b6d4, #22d3ee); }
+  .stat-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gray-500); font-weight: 600; margin-bottom: 6px; }
+  .stat-value { font-family: 'Sora', sans-serif; font-size: 1.9rem; font-weight: 700; color: var(--kg-navy); line-height: 1; }
+  .stat-detail { font-size: 0.75rem; color: var(--gray-500); margin-top: 4px; }
+
+  /* ===================== TABLES ===================== */
+  .table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--gray-200); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  th {
+    background: var(--kg-navy); color: white;
+    padding: 12px 14px; text-align: left;
+    font-size: 0.72rem; letter-spacing: 0.06em;
+    text-transform: uppercase; font-weight: 600;
+    white-space: nowrap;
+  }
+  th:first-child { border-radius: 0; }
+  td { padding: 11px 14px; border-bottom: 1px solid var(--gray-100); color: var(--gray-700); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--gray-50); }
+  .tfoot-row td { background: var(--gray-100); font-weight: 600; color: var(--kg-navy); }
+
+  /* Progress bar */
+  .prog-bar { height: 6px; background: var(--gray-200); border-radius: 10px; overflow: hidden; min-width: 80px; }
+  .prog-fill { height: 100%; border-radius: 10px; background: var(--kg-grad2); transition: width 0.6s ease; }
+  .prog-fill.green { background: linear-gradient(90deg, #10b981, #34d399); }
+  .prog-fill.amber { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+  .prog-fill.red   { background: linear-gradient(90deg, #ef4444, #f87171); }
+
+  /* ===================== SEARCH PANEL ===================== */
+  .search-box-wrap { display: flex; gap: 10px; margin-bottom: 24px; }
+  .search-input {
+    flex: 1; padding: 14px 18px;
+    border: 2px solid var(--gray-200);
+    border-radius: var(--radius);
+    font-family: 'DM Sans', sans-serif; font-size: 0.95rem;
+    outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+    background: white;
+  }
+  .search-input:focus { border-color: var(--kg-light); box-shadow: 0 0 0 4px rgba(21,101,192,0.1); }
+  .btn-search {
+    padding: 14px 28px;
+    background: var(--kg-grad2);
+    color: white; border: none; border-radius: var(--radius);
+    font-family: 'Sora', sans-serif; font-size: 0.9rem; font-weight: 600;
+    cursor: pointer; transition: opacity 0.2s, transform 0.15s;
+    white-space: nowrap;
+    box-shadow: 0 4px 16px rgba(21,101,192,0.25);
+  }
+  .btn-search:hover { opacity: 0.9; transform: translateY(-1px); }
+
+  /* Employee profile card */
+  .emp-profile {
+    background: var(--kg-grad); color: white;
+    border-radius: var(--radius-lg); padding: 28px;
+    margin-bottom: 20px; display: flex; gap: 20px; align-items: center;
+    flex-wrap: wrap;
+  }
+  .emp-avatar {
+    width: 64px; height: 64px; border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Sora', sans-serif; font-size: 1.6rem; font-weight: 700;
+    flex-shrink: 0;
+  }
+  .emp-info { flex: 1; }
+  .emp-name { font-family: 'Sora', sans-serif; font-size: 1.3rem; font-weight: 700; }
+  .emp-meta { opacity: 0.8; font-size: 0.85rem; margin-top: 4px; }
+  .emp-nik { background: rgba(255,255,255,0.15); padding: 3px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 500; display: inline-block; margin-top: 8px; }
+
+  /* Learning summary grid */
+  .learn-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 20px; }
+  .learn-card {
+    background: white; border-radius: var(--radius);
+    padding: 18px; border: 1px solid var(--gray-100);
+    box-shadow: var(--shadow); text-align: center;
+  }
+  .learn-icon { font-size: 1.6rem; margin-bottom: 8px; }
+  .learn-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--gray-500); font-weight: 600; }
+  .learn-val { font-family: 'Sora', sans-serif; font-size: 1.6rem; font-weight: 700; color: var(--kg-navy); }
+  .learn-sub { font-size: 0.7rem; color: var(--gray-500); margin-top: 2px; }
+
+  /* Topic pills */
+  .topic-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+  .topic-pill {
+    background: white; border-radius: var(--radius);
+    padding: 14px 16px; border: 1px solid var(--gray-200);
+    display: flex; align-items: center; justify-content: space-between;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .topic-pill:hover { border-color: var(--kg-light); box-shadow: 0 2px 12px rgba(21,101,192,0.08); }
+  .topic-name { font-size: 0.82rem; font-weight: 500; color: var(--gray-700); }
+  .topic-hours { font-family: 'Sora', sans-serif; font-weight: 700; color: var(--kg-mid); font-size: 1rem; }
+  .topic-sessions { font-size: 0.7rem; color: var(--gray-500); }
+
+  /* Progress indicator */
+  .progress-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 20px;
+    font-size: 0.78rem; font-weight: 600;
+  }
+  .prog-complete { background: #d1fae5; color: #065f46; }
+  .prog-progress { background: #fef3c7; color: #92400e; }
+  .prog-inactive { background: #fee2e2; color: #991b1b; }
+
+  /* ===================== DASHBOARD SECTION ===================== */
+  .section-divider { font-family: 'Sora', sans-serif; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--kg-mid); font-weight: 700; margin: 28px 0 14px; padding-bottom: 8px; border-bottom: 2px solid var(--gray-100); }
+
+  /* ===================== ADMIN — ACCESS MANAGEMENT ===================== */
+  .access-controls { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; align-items: flex-end; }
+  .select-input {
+    padding: 10px 14px; border: 2px solid var(--gray-200);
+    border-radius: var(--radius); font-family: 'DM Sans', sans-serif;
+    font-size: 0.875rem; outline: none; background: white;
+    min-width: 200px; cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  .select-input:focus { border-color: var(--kg-light); }
+  .btn-secondary {
+    padding: 10px 20px; border-radius: var(--radius);
+    font-family: 'Sora', sans-serif; font-size: 0.85rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s;
+    border: 2px solid var(--kg-mid); color: var(--kg-mid);
+    background: white;
+  }
+  .btn-secondary:hover { background: var(--kg-mid); color: white; }
+  .btn-danger {
+    padding: 10px 20px; border-radius: var(--radius);
+    font-family: 'Sora', sans-serif; font-size: 0.85rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s;
+    border: 2px solid var(--danger); color: var(--danger); background: white;
+  }
+  .btn-danger:hover { background: var(--danger); color: white; }
+  .btn-success {
+    padding: 10px 20px; border-radius: var(--radius);
+    font-family: 'Sora', sans-serif; font-size: 0.85rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; border: none;
+    background: var(--success); color: white;
+  }
+  .btn-success:hover { opacity: 0.88; }
+
+  /* Toggle switch */
+  .toggle-row { display: flex; align-items: center; gap: 14px; }
+  .toggle-label { font-weight: 500; font-size: 0.9rem; color: var(--gray-700); }
+  .toggle-switch { position: relative; width: 52px; height: 28px; cursor: pointer; }
+  .toggle-switch input { opacity: 0; width: 0; height: 0; }
+  .toggle-track {
+    position: absolute; inset: 0;
+    background: var(--gray-300); border-radius: 28px;
+    transition: background 0.3s;
+  }
+  .toggle-switch input:checked + .toggle-track { background: var(--danger); }
+  .toggle-thumb {
+    position: absolute; top: 3px; left: 3px;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: white; box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    transition: transform 0.3s;
+  }
+  .toggle-switch input:checked ~ .toggle-thumb { transform: translateX(24px); }
+  .toggle-status { font-size: 0.8rem; font-weight: 600; }
+  .toggle-status.on { color: var(--danger); }
+  .toggle-status.off { color: var(--success); }
+
+  /* ===================== LOADING SPINNER ===================== */
+  .loading-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px; gap: 16px; }
+  .spinner { width: 40px; height: 40px; border: 3px solid var(--gray-200); border-top-color: var(--kg-light); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-text { color: var(--gray-500); font-size: 0.875rem; }
+
+  /* Empty state */
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--gray-500); }
+  .empty-icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.5; }
+  .empty-text { font-size: 0.9rem; }
+
+  /* Notification toast */
+  #toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--kg-navy); color: white;
+    padding: 14px 20px; border-radius: var(--radius);
+    font-size: 0.875rem; box-shadow: var(--shadow-lg);
+    transform: translateY(80px); opacity: 0;
+    transition: all 0.35s cubic-bezier(0.34,1.56,0.64,1);
+    z-index: 9000; max-width: 320px;
+  }
+  #toast.show { transform: translateY(0); opacity: 1; }
+  #toast.success { background: var(--success); }
+  #toast.error   { background: var(--danger); }
+
+  /* Pagination */
+  .pagination { display: flex; gap: 6px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
+  .page-btn {
+    min-width: 36px; height: 36px; border-radius: 8px;
+    border: 1px solid var(--gray-200); background: white;
+    color: var(--gray-700); font-size: 0.82rem; font-weight: 500;
+    cursor: pointer; transition: all 0.15s;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0 8px;
+  }
+  .page-btn:hover { border-color: var(--kg-light); color: var(--kg-mid); }
+  .page-btn.active { background: var(--kg-mid); color: white; border-color: var(--kg-mid); }
+  .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Filter row */
+  .filter-row { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+  .filter-tag { font-size: 0.75rem; color: var(--gray-500); font-weight: 500; }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .app-content { padding: 16px; }
+    .app-header { padding: 0 16px; }
+    .app-nav { padding: 0 8px; }
+    .login-card { padding: 32px 24px; margin: 16px; }
+    .stat-grid { grid-template-columns: repeat(2, 1fr); }
+    .emp-profile { flex-direction: column; text-align: center; }
+    .access-controls { flex-direction: column; }
+    .search-box-wrap { flex-direction: column; }
+  }
+
+  /* Self report button */
+  .self-report-bar {
+    background: linear-gradient(135deg, #e0f2fe, #f0f9ff);
+    border: 1px solid #bae6fd; border-radius: var(--radius);
+    padding: 16px 20px; display: flex; align-items: center;
+    justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    margin-bottom: 24px;
+  }
+  .self-report-text { font-size: 0.875rem; color: var(--kg-navy); font-weight: 500; }
+  .self-report-text span { display: block; font-size: 0.8rem; color: var(--gray-500); font-weight: 400; margin-top: 2px; }
+  .btn-report {
+    padding: 10px 22px;
+    background: var(--kg-grad2); color: white;
+    border: none; border-radius: var(--radius);
+    font-family: 'Sora', sans-serif; font-size: 0.85rem; font-weight: 600;
+    cursor: pointer; text-decoration: none;
+    display: inline-block; white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(21,101,192,0.25);
+    transition: opacity 0.2s, transform 0.15s;
+  }
+  .btn-report:hover { opacity: 0.9; transform: translateY(-1px); }
+
+  /* Search bar filter */
+  .search-filter-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+  @media (max-width: 600px) { .search-filter-grid { grid-template-columns: 1fr; } }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 10px; border-radius: 20px;
+    font-size: 0.72rem; font-weight: 600;
+  }
+  .chip-blue   { background: #dbeafe; color: #1e40af; }
+  .chip-green  { background: #d1fae5; color: #065f46; }
+  .chip-amber  { background: #fef3c7; color: #92400e; }
+  .chip-red    { background: #fee2e2; color: #991b1b; }
+  .chip-gray   { background: var(--gray-100); color: var(--gray-700); }
+
+  .info-alert {
+    background: #eff6ff; border-left: 4px solid var(--kg-light);
+    padding: 12px 16px; border-radius: 0 var(--radius) var(--radius) 0;
+    font-size: 0.85rem; color: var(--kg-navy); margin-bottom: 20px;
+  }
+</style>
+</head>
+<body>
+
+<!-- MAINTENANCE SCREEN -->
+<div id="maintenance-screen">
+  <div class="maint-icon">⚙️</div>
+  <div class="maint-title">Portal Sedang Diperbarui</div>
+  <div class="maint-sub">Portal MA Learning Hub sedang dalam proses pembaruan data. Silakan coba kembali beberapa saat lagi.<br><br>Untuk informasi lebih lanjut, hubungi tim HR.</div>
+</div>
+
+<!-- LOGIN SCREEN -->
+<div id="login-screen">
+  <div class="login-bg-shapes">
+    <span></span><span></span><span></span>
+  </div>
+  <div class="login-card">
+    <div class="login-logo">
+      <img id="login-logo-img" src="" alt="KG Media">
+      <div class="tagline">MA Learning Hub</div>
+    </div>
+    <div class="login-heading">Selamat Datang</div>
+    <div class="login-sub">Masukkan NIK Anda untuk mengakses portal</div>
+    <label class="field-label" for="nik-input">NIK Karyawan</label>
+    <input class="field-input" id="nik-input" type="text" placeholder="Contoh: 12345 atau KG001" autocomplete="off" autofocus>
+    <button class="btn-primary" id="btn-login" onclick="doLogin()">Masuk ke Portal</button>
+    <div class="login-error" id="login-error"></div>
+    <div class="login-footer">KG Media · © 2026 · Confidential</div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app">
+  <!-- Maintenance banner for admin -->
+  <div class="maintenance-banner" id="maint-banner">
+    ⚠️ MODE MAINTENANCE AKTIF — Karyawan tidak dapat mengakses portal saat ini
+  </div>
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-logo">
+      <img id="app-logo-img" src="" alt="KG Media">
+      <span class="portal-label">MA Learning Hub</span>
+    </div>
+    <div class="header-right">
+      <div class="user-badge" id="user-badge">
+        <div class="user-avatar" id="user-avatar">?</div>
+        <div>
+          <div id="user-name-display" style="font-weight:600;font-size:0.85rem;"></div>
+          <div id="user-nik-display" style="opacity:0.7;font-size:0.72rem;"></div>
+        </div>
+        <span class="user-role-badge" id="user-role-badge"></span>
+      </div>
+      <button class="btn-logout" onclick="doLogout()">Keluar</button>
+    </div>
+  </header>
+
+  <!-- Nav Tabs -->
+  <nav class="app-nav" id="app-nav"></nav>
+
+  <!-- Content -->
+  <main class="app-content">
+    <!-- TAB: MY LEARNING (Employee) -->
+    <div class="tab-panel" id="tab-my-learning">
+      <div class="page-header">
+        <div class="page-title">📚 Ringkasan Learning Saya</div>
+        <div class="page-sub">Data learning hours Anda berdasarkan data terakhir</div>
+      </div>
+      <div class="self-report-bar">
+        <div>
+          <div class="self-report-text">Belajar mandiri? Laporkan jam belajar Anda</div>
+          <span>Self-report learning hours melalui Google Form resmi</span>
+        </div>
+        <a class="btn-report" href="https://docs.google.com/forms/d/e/1FAIpQLSf8U74xTaJLESZOAVU8qVGYPA-yK_9ypm8n6wyRMHTw_ihTRQ/viewform" target="_blank">📝 Laporkan Jam Belajar</a>
+      </div>
+      <div id="my-learning-content">
+        <div class="loading-wrap"><div class="spinner"></div><div class="loading-text">Memuat data learning...</div></div>
+      </div>
+    </div>
+
+    <!-- TAB: SEARCH (HR can search anyone) -->
+    <div class="tab-panel" id="tab-search">
+      <div class="page-header">
+        <div class="page-title">🔍 Cari Data Karyawan</div>
+        <div class="page-sub">Cari learning summary berdasarkan NIK karyawan</div>
+      </div>
+      <div class="search-box-wrap">
+        <input class="search-input" id="hr-search-input" type="text" placeholder="Masukkan NIK karyawan..." onkeydown="if(event.key==='Enter')hrSearch()">
+        <button class="btn-search" onclick="hrSearch()">🔍 Cari</button>
+      </div>
+      <div id="hr-search-result"></div>
+    </div>
+
+    <!-- TAB: DASHBOARD (HR/Admin) -->
+    <div class="tab-panel" id="tab-dashboard">
+      <div class="page-header">
+        <div class="page-title">📊 Dashboard Learning Hours</div>
+        <div class="page-sub">Rekap keseluruhan program learning KG Media 2026</div>
+      </div>
+      <div id="dashboard-content">
+        <div class="loading-wrap"><div class="spinner"></div><div class="loading-text">Memuat dashboard...</div></div>
+      </div>
+    </div>
+
+    <!-- TAB: LEARNING PARTICIPATION (HR/Admin) -->
+    <div class="tab-panel" id="tab-participation">
+      <div class="page-header">
+        <div class="page-title">📋 Data Learning Participation</div>
+        <div class="page-sub">Raw data seluruh partisipasi learning karyawan</div>
+      </div>
+      <div class="filter-row">
+        <input class="search-input" id="part-search" style="max-width:300px;padding:9px 14px;" type="text" placeholder="Filter nama / NIK / topik..." oninput="filterParticipation()">
+        <span class="filter-tag" id="part-count"></span>
+      </div>
+      <div id="participation-content">
+        <div class="loading-wrap"><div class="spinner"></div><div class="loading-text">Memuat data partisipasi...</div></div>
+      </div>
+      <div class="pagination" id="part-pagination"></div>
+    </div>
+
+    <!-- TAB: LEARNING HUB -->
+    <div class="tab-panel" id="tab-hub">
+      <div class="page-header">
+        <div class="page-title">🎓 MA Learning Hub</div>
+        <div class="page-sub">Akses platform learning KG Media</div>
+      </div>
+      <div class="card" style="text-align:center;padding:60px 40px;">
+        <div style="font-size:4rem;margin-bottom:20px;">🎓</div>
+        <div style="font-family:'Sora',sans-serif;font-size:1.4rem;font-weight:700;color:var(--kg-navy);margin-bottom:8px;">MA Learning Hub</div>
+        <div style="color:var(--gray-500);margin-bottom:28px;font-size:0.9rem;">Klik tombol di bawah untuk mengakses platform learning KG Media</div>
+        <a href="https://bit.ly/MALearningHub" target="_blank" class="btn-report" style="font-size:1rem;padding:14px 36px;">
+          🚀 Buka MA Learning Hub
+        </a>
+        <div style="color:var(--gray-400);font-size:0.75rem;margin-top:16px;">bit.ly/MALearningHub</div>
+      </div>
+    </div>
+
+    <!-- TAB: MANAGE ACCESS (Admin) -->
+    <div class="tab-panel" id="tab-access">
+      <div class="page-header">
+        <div class="page-title">⚙️ Kelola Akses & Sistem</div>
+        <div class="page-sub">Manajemen hak akses dan mode maintenance portal</div>
+      </div>
+
+      <!-- Maintenance Toggle -->
+      <div class="card" style="margin-bottom:20px;">
+        <div class="card-title">🔧 Mode Maintenance</div>
+        <div class="info-alert">Saat mode maintenance aktif, karyawan tidak dapat login ke portal. Hanya Admin yang tetap bisa mengakses.</div>
+        <div class="toggle-row">
+          <label class="toggle-switch">
+            <input type="checkbox" id="maint-toggle" onchange="toggleMaintenance()">
+            <div class="toggle-track"></div>
+            <div class="toggle-thumb"></div>
+          </label>
+          <span class="toggle-label">Mode Maintenance</span>
+          <span class="toggle-status" id="maint-status">OFF</span>
+        </div>
+        <div style="margin-top:12px;font-size:0.8rem;color:var(--gray-500);" id="maint-time-info"></div>
+      </div>
+
+      <!-- Access List -->
+      <div class="card">
+        <div class="card-title">👥 Daftar HR & Admin</div>
+        <div class="info-alert">Akses dikelola melalui tab <strong>Access</strong> di Google Sheet. Tabel di bawah menampilkan daftar HR dan Admin yang terdaftar.</div>
+        <div class="filter-row">
+          <input class="search-input" id="access-search" style="max-width:280px;padding:9px 14px;" placeholder="Cari nama / NIK..." oninput="filterAccessTable()">
+          <select class="select-input" id="access-role-filter" onchange="filterAccessTable()" style="min-width:150px;max-width:200px;padding:9px 14px;">
+            <option value="">Semua Role</option>
+            <option value="Admin">Admin</option>
+            <option value="HR">HR</option>
+          </select>
+        </div>
+        <div id="access-table-content">
+          <div class="loading-wrap"><div class="spinner"></div><div class="loading-text">Memuat data akses...</div></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+// ============================================================
+// CONFIG — UPDATE GID VALUES TO MATCH YOUR SHEET TABS
+// ============================================================
+const SHEET_BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAnkC8gLRwI8QsiKzbaaQV_w577RvjKKMRfQAw96ZCt0cNBfiIuCtqtm4fxzH8h5-X_0/pub?output=csv';
+
+// ⚠️ IMPORTANT: Replace these GID numbers with your actual tab GIDs
+// Find them in the URL when you click each tab in Google Sheets (?gid=XXXXXXXX)
+const TABS = {
+  access:        SHEET_BASE + '&gid=185308502', // Access tab
+  database:      SHEET_BASE + '&gid=257024260', // Database tab
+  participation: SHEET_BASE + '&gid=0',         // Learning Participation tab
+  recap:         SHEET_BASE + '&gid=550872410', // Recap tab
+  searchbar:     SHEET_BASE + '&gid=904954376', // Search Bar tab
+};
+
+const GOOGLE_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSf8U74xTaJLESZOAVU8qVGYPA-yK_9ypm8n6wyRMHTw_ihTRQ/viewform';
+
+// Logo: base64 of uploaded logo (will be set inline)
+const LOGO_URL = 'logo.png'; // place logo.png in same folder as index.html
+
+// Layer hierarchy — lower number = higher access
+const LAYER_ORDER = ['Admin', 'HR', '1', '2', '3', '4', 'NL'];
+
+// ============================================================
+// STATE
+// ============================================================
+let currentUser = null;   // { nik, name, role, layer }
+let accessData  = [];
+let dbData      = [];
+let partData    = [];
+let recapData   = [];
+let filteredPartData = [];
+let partPage    = 1;
+const PART_PER_PAGE = 50;
+
+// ============================================================
+// LOGO SETUP
+// ============================================================
+function setupLogos() {
+  const imgs = document.querySelectorAll('#login-logo-img, #app-logo-img');
+  imgs.forEach(img => { img.src = LOGO_URL; img.onerror = () => { img.style.display = 'none'; }; });
+}
+
+// ============================================================
+// MAINTENANCE
+// ============================================================
+function getMaintenanceState() {
+  return localStorage.getItem('kg_maintenance') === '1';
+}
+function setMaintenanceState(val) {
+  localStorage.setItem('kg_maintenance', val ? '1' : '0');
+  if (val) localStorage.setItem('kg_maint_time', new Date().toLocaleString('id-ID'));
+}
+function checkMaintenanceOnLogin() {
+  if (getMaintenanceState()) {
+    // Only admins can pass through
+    return true; // is maintenance
+  }
+  return false;
+}
+function toggleMaintenance() {
+  const cb = document.getElementById('maint-toggle');
+  const active = cb.checked;
+  setMaintenanceState(active);
+  updateMaintenanceUI(active);
+  showToast(active ? 'Mode Maintenance AKTIF — karyawan tidak bisa login' : 'Mode Maintenance NONAKTIF — portal kembali normal', active ? 'error' : 'success');
+}
+function updateMaintenanceUI(active) {
+  const status = document.getElementById('maint-status');
+  const banner = document.getElementById('maint-banner');
+  const timeInfo = document.getElementById('maint-time-info');
+  if (status) { status.textContent = active ? 'ON' : 'OFF'; status.className = 'toggle-status ' + (active ? 'on' : 'off'); }
+  if (banner) banner.classList.toggle('show', active);
+  if (timeInfo) {
+    const t = localStorage.getItem('kg_maint_time');
+    timeInfo.textContent = active && t ? 'Diaktifkan pada: ' + t : '';
+  }
+}
+
+// ============================================================
+// CSV PARSER
+// ============================================================
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  if (lines.length < 2) return [];
+  const headers = parseCSVRow(lines[0]);
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const vals = parseCSVRow(lines[i]);
+    if (vals.every(v => !v.trim())) continue;
+    const obj = {};
+    headers.forEach((h, idx) => { obj[h.trim()] = (vals[idx] || '').trim(); });
+    rows.push(obj);
+  }
+  return rows;
+}
+function parseCSVRow(line) {
+  const result = []; let current = ''; let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i+1] === '"') { current += '"'; i++; }
+      else inQuotes = !inQuotes;
+    } else if (ch === ',' && !inQuotes) {
+      result.push(current); current = '';
+    } else { current += ch; }
+  }
+  result.push(current);
+  return result;
+}
+async function fetchCSV(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Gagal mengambil data: ' + res.status);
+  const text = await res.text();
+  return parseCSV(text);
+}
+
+// ============================================================
+// LOGIN
+// ============================================================
+async function doLogin() {
+  const nik = document.getElementById('nik-input').value.trim();
+  if (!nik) { showLoginError('Silakan masukkan NIK Anda.'); return; }
+
+  const btn = document.getElementById('btn-login');
+  btn.disabled = true; btn.textContent = 'Memuat...';
+  hideLoginError();
+
+  try {
+    // Load access data
+    if (accessData.length === 0) {
+      accessData = await fetchCSV(TABS.access);
+    }
+
+    // Find user in access sheet
+    const user = accessData.find(r => {
+      const userNIK = (r['NIK'] || r['nik'] || '').toString().trim().toLowerCase();
+      return userNIK === nik.toLowerCase();
+    });
+
+    // If not in access sheet, check if they exist in database (employee)
+    let role = 'Employee'; let layer = 'NL'; let name = nik; let found = false;
+
+    if (user) {
+      name  = user['nama'] || user['NAMA'] || user['Name'] || nik;
+      role  = user['role'] || user['Role'] || user['ROLE'] || 'Employee';
+      layer = user['layer'] || user['Layer'] || user['LAYER'] || 'NL';
+      found = true;
+    } else {
+      // Try database tab
+      if (dbData.length === 0) dbData = await fetchCSV(TABS.database);
+      const dbUser = dbData.find(r => {
+        const dbNIK = (r['NIK'] || r['nik'] || '').toString().trim().toLowerCase();
+        return dbNIK === nik.toLowerCase();
+      });
+      if (dbUser) {
+        name = dbUser['NAMA'] || dbUser['nama'] || dbUser['Name'] || nik;
+        found = true;
+        role = 'Employee'; layer = 'NL';
+      }
+    }
+
+    if (!found) { showLoginError('NIK tidak ditemukan. Pastikan NIK yang Anda masukkan benar.'); btn.disabled = false; btn.textContent = 'Masuk ke Portal'; return; }
+
+    // Check maintenance — only Admin can pass
+    if (getMaintenanceState() && role !== 'Admin') {
+      showLoginError('Portal sedang dalam maintenance. Silakan coba kembali nanti.');
+      btn.disabled = false; btn.textContent = 'Masuk ke Portal';
+      // Show maintenance screen briefly
+      document.getElementById('maintenance-screen').classList.add('active');
+      setTimeout(() => document.getElementById('maintenance-screen').classList.remove('active'), 3000);
+      return;
+    }
+
+    currentUser = { nik, name, role, layer };
+    initApp();
+
+  } catch(e) {
+    showLoginError('Terjadi kesalahan: ' + e.message);
+    btn.disabled = false; btn.textContent = 'Masuk ke Portal';
+  }
+}
+function showLoginError(msg) { const el = document.getElementById('login-error'); el.textContent = msg; el.classList.add('show'); }
+function hideLoginError() { document.getElementById('login-error').classList.remove('show'); }
+
+document.getElementById('nik-input').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+// ============================================================
+// INIT APP
+// ============================================================
+function initApp() {
+  document.getElementById('login-screen').style.display = 'none';
+  const app = document.getElementById('app');
+  app.classList.add('active');
+
+  // User badge
+  const initials = currentUser.name.split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase();
+  document.getElementById('user-avatar').textContent = initials || currentUser.nik.slice(0,2).toUpperCase();
+  document.getElementById('user-name-display').textContent = currentUser.name;
+  document.getElementById('user-nik-display').textContent = 'NIK: ' + currentUser.nik;
+  const roleBadge = document.getElementById('user-role-badge');
+  roleBadge.textContent = currentUser.role;
+  roleBadge.className = 'user-role-badge role-' + currentUser.role.toLowerCase();
+
+  // Build navigation
+  buildNav();
+
+  // Maintenance UI
+  updateMaintenanceUI(getMaintenanceState());
+  if (currentUser.role === 'Admin') {
+    document.getElementById('maint-toggle').checked = getMaintenanceState();
+  }
+
+  // Auto-load first tab
+  const firstTab = document.querySelector('.nav-tab');
+  if (firstTab) firstTab.click();
+}
+
+// ============================================================
+// NAVIGATION
+// ============================================================
+function buildNav() {
+  const role = currentUser.role;
+  const tabs = [];
+
+  if (role === 'Employee') {
+    tabs.push({ id: 'my-learning', label: '📚 Learning Saya', load: loadMyLearning });
+    tabs.push({ id: 'hub',         label: '🎓 Learning Hub' });
+  } else if (role === 'HR') {
+    tabs.push({ id: 'dashboard',     label: '📊 Dashboard',   load: loadDashboard });
+    tabs.push({ id: 'participation', label: '📋 Partisipasi', load: loadParticipation });
+    tabs.push({ id: 'search',        label: '🔍 Cari Karyawan' });
+    tabs.push({ id: 'my-learning',   label: '📚 Learning Saya', load: loadMyLearning });
+    tabs.push({ id: 'hub',           label: '🎓 Learning Hub' });
+  } else if (role === 'Admin') {
+    tabs.push({ id: 'dashboard',     label: '📊 Dashboard',   load: loadDashboard });
+    tabs.push({ id: 'participation', label: '📋 Partisipasi', load: loadParticipation });
+    tabs.push({ id: 'search',        label: '🔍 Cari Karyawan' });
+    tabs.push({ id: 'my-learning',   label: '📚 Learning Saya', load: loadMyLearning });
+    tabs.push({ id: 'hub',           label: '🎓 Learning Hub' });
+    tabs.push({ id: 'access',        label: '⚙️ Kelola Akses', load: loadAccessManagement });
+  }
+
+  const nav = document.getElementById('app-nav');
+  nav.innerHTML = '';
+  tabs.forEach(tab => {
+    const btn = document.createElement('div');
+    btn.className = 'nav-tab';
+    btn.textContent = tab.label;
+    btn.dataset.tab = tab.id;
+    btn.onclick = () => switchTab(tab.id, tab.load);
+    nav.appendChild(btn);
+  });
+}
+
+let loadedTabs = {};
+function switchTab(tabId, loadFn) {
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  const panel = document.getElementById('tab-' + tabId);
+  if (panel) panel.classList.add('active');
+  if (loadFn && !loadedTabs[tabId]) { loadedTabs[tabId] = true; loadFn(); }
+}
+
+// ============================================================
+// MY LEARNING
+// ============================================================
+async function loadMyLearning() {
+  const el = document.getElementById('my-learning-content');
+  try {
+    if (dbData.length === 0) dbData = await fetchCSV(TABS.database);
+    const nik = currentUser.nik.toLowerCase();
+    const emp = dbData.find(r => (r['NIK']||'').toString().trim().toLowerCase() === nik);
+    if (!emp) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">😕</div><div class="empty-text">Data learning untuk NIK ini belum tersedia.</div></div>'; return; }
+    el.innerHTML = buildEmployeeCard(emp);
+  } catch(e) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Gagal memuat data: ' + e.message + '</div></div>';
+  }
+}
+
+function buildEmployeeCard(emp) {
+  const name     = emp['NAMA'] || emp['nama'] || '-';
+  const nik      = emp['NIK']  || emp['nik']  || '-';
+  const status   = emp['Status'] || emp['STATUS'] || '-';
+  const position = emp['Position'] || emp['POSITION'] || emp['Posisi'] || '-';
+  const unit     = emp['Unit'] || emp['UNIT'] || '-';
+  const directorate = emp['Directorate'] || emp['DIRECTORATE'] || emp['Direktorat'] || '-';
+
+  const allHours  = parseFloat(emp['All Hours'] || emp['ALL HOURS'] || 0) || 0;
+  const learningH = parseFloat(emp['Learning Hours'] || emp['LEARNING HOURS'] || 0) || 0;
+  const m1        = parseFloat(emp['First Mandatory'] || emp['FIRST MANDATORY'] || 0) || 0;
+  const m2        = parseFloat(emp['Second Mandatory'] || emp['SECOND MANDATORY'] || 0) || 0;
+  const m3        = parseFloat(emp['Third Mandatory'] || emp['THIRD MANDATORY'] || 0) || 0;
+  const target    = 18;
+  const progPct   = Math.min(100, Math.round((learningH / target) * 100));
+  let progClass   = learningH >= target ? 'prog-complete' : learningH > 0 ? 'prog-progress' : 'prog-inactive';
+  let progText    = learningH >= target ? '✅ Telah Memenuhi Target' : learningH > 0 ? '⏳ Sedang Berlangsung' : '❌ Belum Ada Aktivitas';
+
+  // Topic hours
+  const topics = ['Sustainability','Video Production','AI General','AI for Newsroom','AI Media Intelligence','Creative Thinking','Others'];
+  const topicEmoji = { 'Sustainability':'🌱','Video Production':'🎬','AI General':'🤖','AI for Newsroom':'📰','AI Media Intelligence':'🧠','Creative Thinking':'💡','Others':'📦' };
+
+  let topicsHTML = '';
+  topics.forEach(t => {
+    const hrs  = parseFloat(emp[t] || 0) || 0;
+    const sess = parseInt(emp[t + ' '] || emp[t+'_count'] || 0) || 0; // sessions col might vary
+    topicsHTML += `
+      <div class="topic-pill">
+        <div>
+          <div class="topic-name">${topicEmoji[t]||'📌'} ${t}</div>
+          <div class="topic-sessions">${sess > 0 ? sess + ' sesi' : '-'}</div>
+        </div>
+        <div class="topic-hours">${hrs > 0 ? hrs.toFixed(1) + ' jam' : '-'}</div>
+      </div>`;
+  });
+
+  const initials = name.split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase();
+
+  return `
+    <div class="emp-profile">
+      <div class="emp-avatar">${initials}</div>
+      <div class="emp-info">
+        <div class="emp-name">${name}</div>
+        <div class="emp-meta">${position} · ${unit} · ${directorate}</div>
+        <div class="emp-meta" style="margin-top:4px;">Status: ${status}</div>
+        <div class="emp-nik">NIK: ${nik}</div>
+      </div>
+      <div>
+        <span class="progress-badge ${progClass}">${progText}</span>
+      </div>
+    </div>
+
+    <div class="learn-grid">
+      <div class="learn-card">
+        <div class="learn-icon">⏱️</div>
+        <div class="learn-label">Total Semua Jam</div>
+        <div class="learn-val">${allHours.toFixed(1)}</div>
+        <div class="learn-sub">jam keseluruhan</div>
+      </div>
+      <div class="learn-card">
+        <div class="learn-icon">📖</div>
+        <div class="learn-label">Learning Hours</div>
+        <div class="learn-val">${learningH.toFixed(1)}</div>
+        <div class="learn-sub">target: ${target} jam</div>
+      </div>
+      <div class="learn-card" style="background:${m1>0?'#eff6ff':'white'}">
+        <div class="learn-icon">🏅</div>
+        <div class="learn-label">Mandatory 1</div>
+        <div class="learn-val" style="color:${m1>0?'var(--kg-mid)':'var(--gray-300)'}">${m1.toFixed(1)}</div>
+        <div class="learn-sub">jam</div>
+      </div>
+      <div class="learn-card" style="background:${m2>0?'#eff6ff':'white'}">
+        <div class="learn-icon">🏅</div>
+        <div class="learn-label">Mandatory 2</div>
+        <div class="learn-val" style="color:${m2>0?'var(--kg-mid)':'var(--gray-300)'}">${m2.toFixed(1)}</div>
+        <div class="learn-sub">jam</div>
+      </div>
+      <div class="learn-card" style="background:${m3>0?'#eff6ff':'white'}">
+        <div class="learn-icon">🏅</div>
+        <div class="learn-label">Mandatory 3</div>
+        <div class="learn-val" style="color:${m3>0?'var(--kg-mid)':'var(--gray-300)'}">${m3.toFixed(1)}</div>
+        <div class="learn-sub">jam</div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span style="font-size:0.8rem;font-weight:600;color:var(--gray-700);">Progress Learning Hours</span>
+        <span style="font-size:0.8rem;color:var(--kg-mid);font-weight:700;">${learningH.toFixed(1)} / ${target} jam (${progPct}%)</span>
+      </div>
+      <div class="prog-bar" style="height:10px;">
+        <div class="prog-fill ${progPct>=100?'green':progPct>0?'':'red'}" style="width:${progPct}%"></div>
+      </div>
+    </div>
+
+    <div class="section-divider">Rincian per Topik</div>
+    <div class="topic-grid">${topicsHTML}</div>
+  `;
+}
+
+// ============================================================
+// HR SEARCH
+// ============================================================
+async function hrSearch() {
+  const nik = document.getElementById('hr-search-input').value.trim();
+  if (!nik) { showToast('Masukkan NIK terlebih dahulu', 'error'); return; }
+  const el = document.getElementById('hr-search-result');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div class="loading-text">Mencari...</div></div>';
+
+  try {
+    if (dbData.length === 0) dbData = await fetchCSV(TABS.database);
+
+    // HR/Admin can search anyone; Employee layer logic
+    let emp = null;
+    if (currentUser.role === 'HR' || currentUser.role === 'Admin') {
+      emp = dbData.find(r => (r['NIK']||'').toString().trim().toLowerCase() === nik.toLowerCase());
+    } else {
+      // Employee: check layer permission
+      emp = dbData.find(r => (r['NIK']||'').toString().trim().toLowerCase() === nik.toLowerCase());
+      if (emp) {
+        // Check if current user has permission based on layer
+        const targetUserAccess = accessData.find(a => (a['NIK']||'').toString().trim().toLowerCase() === nik.toLowerCase());
+        const targetLayer = targetUserAccess ? (targetUserAccess['layer']||'NL') : 'NL';
+        if (!canAccessLayer(currentUser.layer, targetLayer) && nik !== currentUser.nik) {
+          el.innerHTML = '<div class="empty-state"><div class="empty-icon">🔒</div><div class="empty-text">Anda tidak memiliki akses untuk melihat data karyawan ini.</div></div>';
+          return;
+        }
+      }
+    }
+
+    if (!emp) {
+      el.innerHTML = '<div class="empty-state"><div class="empty-icon">😕</div><div class="empty-text">NIK tidak ditemukan dalam database.</div></div>';
+      return;
+    }
+    el.innerHTML = buildEmployeeCard(emp);
+  } catch(e) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Error: ' + e.message + '</div></div>';
+  }
+}
+
+function canAccessLayer(myLayer, targetLayer) {
+  const hierarchy = ['Admin','HR','1','2','3','4','NL'];
+  const myIdx     = hierarchy.indexOf(myLayer);
+  const tgtIdx    = hierarchy.indexOf(targetLayer);
+  if (myIdx === -1) return false;
+  return myIdx <= tgtIdx; // lower index = higher privilege
+}
+
+// ============================================================
+// DASHBOARD
+// ============================================================
+async function loadDashboard() {
+  const el = document.getElementById('dashboard-content');
+  try {
+    if (recapData.length === 0) recapData = await fetchCSV(TABS.recap);
+    if (dbData.length === 0) dbData = await fetchCSV(TABS.database);
+    renderDashboard(el);
+  } catch(e) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Gagal memuat dashboard: ' + e.message + '</div></div>';
+  }
+}
+
+function renderDashboard(el) {
+  // Try to use recap data, otherwise compute from database
+  const totalEmp = dbData.length;
+  const noActivity = dbData.filter(r => (parseFloat(r['All Hours']||0)||0) === 0).length;
+  const completed  = dbData.filter(r => (parseFloat(r['Learning Hours']||0)||0) >= 18).length;
+  const inProgress = totalEmp - noActivity - completed;
+  const totalHours = dbData.reduce((s,r) => s + (parseFloat(r['All Hours']||0)||0), 0);
+
+  const mand3plus  = dbData.filter(r => {
+    const m1 = parseFloat(r['First Mandatory']||0)||0;
+    const m2 = parseFloat(r['Second Mandatory']||0)||0;
+    const m3 = parseFloat(r['Third Mandatory']||0)||0;
+    return (m1>0?1:0)+(m2>0?1:0)+(m3>0?1:0) >= 3;
+  }).length;
+
+  // Per-unit summary
+  const units = {};
+  dbData.forEach(r => {
+    const unit = r['Unit']||r['UNIT']||'Lainnya';
+    if (!units[unit]) units[unit] = { total:0, noAct:0, inProg:0, comp:0, mand0:0, mand1:0, mand2:0, mand3p:0 };
+    units[unit].total++;
+    const lh = parseFloat(r['Learning Hours']||0)||0;
+    const ah = parseFloat(r['All Hours']||0)||0;
+    if (ah === 0) units[unit].noAct++;
+    else if (lh >= 18) units[unit].comp++;
+    else units[unit].inProg++;
+    const mc = [r['First Mandatory'],r['Second Mandatory'],r['Third Mandatory']].filter(v=>(parseFloat(v)||0)>0).length;
+    if (mc === 0) units[unit].mand0++;
+    else if (mc === 1) units[unit].mand1++;
+    else if (mc === 2) units[unit].mand2++;
+    else units[unit].mand3p++;
+  });
+
+  let unitLHRows = '';
+  let unitMandRows = '';
+  Object.entries(units).sort((a,b)=>b[1].total-a[1].total).forEach(([unit,u]) => {
+    const compPct = u.total > 0 ? ((u.comp/u.total)*100).toFixed(1) : '0.0';
+    const actPct  = u.total > 0 ? (((u.inProg+u.comp)/u.total)*100).toFixed(1) : '0.0';
+    unitLHRows += `<tr>
+      <td><strong>${unit}</strong></td>
+      <td style="text-align:center;">${u.total}</td>
+      <td style="text-align:center;"><span class="chip chip-red">${u.noAct}</span></td>
+      <td style="text-align:center;">${pct(u.noAct,u.total)}</td>
+      <td style="text-align:center;"><span class="chip chip-amber">${u.inProg}</span></td>
+      <td style="text-align:center;">${pct(u.inProg,u.total)}</td>
+      <td style="text-align:center;"><span class="chip chip-green">${u.comp}</span></td>
+      <td style="text-align:center;">${pct(u.comp,u.total)}</td>
+    </tr>`;
+    unitMandRows += `<tr>
+      <td><strong>${unit}</strong></td>
+      <td style="text-align:center;">${u.total}</td>
+      <td style="text-align:center;"><span class="chip chip-gray">${u.mand0}</span></td>
+      <td style="text-align:center;">${pct(u.mand0,u.total)}</td>
+      <td style="text-align:center;">${u.mand1}</td>
+      <td style="text-align:center;">${u.mand2}</td>
+      <td style="text-align:center;"><span class="chip chip-blue">${u.mand3p}</span></td>
+      <td style="text-align:center;">${pct(u.mand3p,u.total)}</td>
+    </tr>`;
+  });
+
+  const compPct = totalEmp > 0 ? ((completed/totalEmp)*100).toFixed(1) : '0';
+  const mandPct = totalEmp > 0 ? ((mand3plus/totalEmp)*100).toFixed(1) : '0';
+
+  el.innerHTML = `
+    <div class="stat-grid">
+      <div class="stat-card stat-blue">
+        <div class="stat-label">Total Karyawan</div>
+        <div class="stat-value">${totalEmp.toLocaleString('id-ID')}</div>
+        <div class="stat-detail">per 31 Maret 2026</div>
+      </div>
+      <div class="stat-card stat-green">
+        <div class="stat-label">Selesai 18 Jam</div>
+        <div class="stat-value">${completed.toLocaleString('id-ID')}</div>
+        <div class="stat-detail">${compPct}% dari total</div>
+      </div>
+      <div class="stat-card stat-amber">
+        <div class="stat-label">Sedang Berjalan</div>
+        <div class="stat-value">${inProgress.toLocaleString('id-ID')}</div>
+        <div class="stat-detail">< 18 jam learning</div>
+      </div>
+      <div class="stat-card stat-red">
+        <div class="stat-label">Belum Ada Aktivitas</div>
+        <div class="stat-value">${noActivity.toLocaleString('id-ID')}</div>
+        <div class="stat-detail">${(totalEmp>0?((noActivity/totalEmp)*100).toFixed(1):0)}% dari total</div>
+      </div>
+      <div class="stat-card stat-cyan">
+        <div class="stat-label">≥3 Mandatory</div>
+        <div class="stat-value">${mand3plus.toLocaleString('id-ID')}</div>
+        <div class="stat-detail">${mandPct}% dari total</div>
+      </div>
+      <div class="stat-card stat-blue">
+        <div class="stat-label">Total Jam Belajar</div>
+        <div class="stat-value">${totalHours.toFixed(0)}</div>
+        <div class="stat-detail">jam keseluruhan</div>
+      </div>
+    </div>
+
+    <div class="section-divider">Rekap Learning Hours per Unit</div>
+    <div class="card" style="margin-bottom:24px;padding:0;">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Unit</th>
+              <th style="text-align:center;">Jml Karyawan</th>
+              <th style="text-align:center;">Belum Aktif</th>
+              <th style="text-align:center;">%</th>
+              <th style="text-align:center;">In Progress</th>
+              <th style="text-align:center;">%</th>
+              <th style="text-align:center;">Selesai 18 Jam</th>
+              <th style="text-align:center;">%</th>
+            </tr>
+          </thead>
+          <tbody>${unitLHRows}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section-divider">Rekap Mandatory Topic per Unit</div>
+    <div class="card" style="padding:0;">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Unit</th>
+              <th style="text-align:center;">Jml Karyawan</th>
+              <th style="text-align:center;">Belum Mandatory</th>
+              <th style="text-align:center;">%</th>
+              <th style="text-align:center;">1 Mandatory</th>
+              <th style="text-align:center;">2 Mandatory</th>
+              <th style="text-align:center;">≥3 Mandatory</th>
+              <th style="text-align:center;">%</th>
+            </tr>
+          </thead>
+          <tbody>${unitMandRows}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function pct(val, total) {
+  if (!total) return '0.0%';
+  return ((val/total)*100).toFixed(1) + '%';
+}
+
+// ============================================================
+// LEARNING PARTICIPATION
+// ============================================================
+async function loadParticipation() {
+  const el = document.getElementById('participation-content');
+  try {
+    if (partData.length === 0) partData = await fetchCSV(TABS.participation);
+    filteredPartData = [...partData];
+    document.getElementById('part-count').textContent = 'Menampilkan ' + partData.length + ' data';
+    renderParticipationTable();
+  } catch(e) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Gagal memuat data: ' + e.message + '</div></div>';
+  }
+}
+
+function filterParticipation() {
+  const q = document.getElementById('part-search').value.toLowerCase();
+  filteredPartData = partData.filter(r => Object.values(r).some(v => v.toLowerCase().includes(q)));
+  partPage = 1;
+  document.getElementById('part-count').textContent = 'Menampilkan ' + filteredPartData.length + ' dari ' + partData.length + ' data';
+  renderParticipationTable();
+}
+
+function renderParticipationTable() {
+  const el = document.getElementById('participation-content');
+  if (!filteredPartData.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">Tidak ada data yang sesuai filter.</div></div>';
+    document.getElementById('part-pagination').innerHTML = '';
+    return;
+  }
+  const keys = Object.keys(filteredPartData[0]);
+  const start = (partPage-1) * PART_PER_PAGE;
+  const pageData = filteredPartData.slice(start, start + PART_PER_PAGE);
+  const totalPages = Math.ceil(filteredPartData.length / PART_PER_PAGE);
+
+  let thead = '<tr>' + keys.map(k => `<th>${k}</th>`).join('') + '</tr>';
+  let tbody = pageData.map(row =>
+    '<tr>' + keys.map(k => `<td>${row[k]||'-'}</td>`).join('') + '</tr>'
+  ).join('');
+
+  el.innerHTML = `<div class="table-wrap"><table><thead>${thead}</thead><tbody>${tbody}</tbody></table></div>`;
+
+  // Pagination
+  let pgHtml = '';
+  if (totalPages > 1) {
+    pgHtml += `<button class="page-btn" onclick="goPage(${partPage-1})" ${partPage===1?'disabled':''}>‹</button>`;
+    for (let i = Math.max(1,partPage-2); i <= Math.min(totalPages,partPage+2); i++) {
+      pgHtml += `<button class="page-btn ${i===partPage?'active':''}" onclick="goPage(${i})">${i}</button>`;
+    }
+    pgHtml += `<button class="page-btn" onclick="goPage(${partPage+1})" ${partPage===totalPages?'disabled':''}>›</button>`;
+    pgHtml += `<span style="font-size:0.75rem;color:var(--gray-500);align-self:center;padding:0 8px;">Hal ${partPage}/${totalPages}</span>`;
+  }
+  document.getElementById('part-pagination').innerHTML = pgHtml;
+}
+
+function goPage(p) {
+  const max = Math.ceil(filteredPartData.length / PART_PER_PAGE);
+  if (p < 1 || p > max) return;
+  partPage = p;
+  renderParticipationTable();
+  document.getElementById('tab-participation').scrollIntoView({behavior:'smooth'});
+}
+
+// ============================================================
+// ACCESS MANAGEMENT
+// ============================================================
+let accessDisplayData = [];
+function loadAccessManagement() {
+  const el = document.getElementById('access-table-content');
+  if (accessData.length === 0) {
+    fetchCSV(TABS.access).then(data => {
+      accessData = data;
+      accessDisplayData = accessData.filter(r => {
+        const role = (r['role']||r['Role']||r['ROLE']||'').trim();
+        return role === 'Admin' || role === 'HR';
+      });
+      renderAccessTable(accessDisplayData);
+    }).catch(e => {
+      el.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Error: '+e.message+'</div></div>';
+    });
+  } else {
+    accessDisplayData = accessData.filter(r => {
+      const role = (r['role']||r['Role']||r['ROLE']||'').trim();
+      return role === 'Admin' || role === 'HR';
+    });
+    renderAccessTable(accessDisplayData);
+  }
+}
+
+function filterAccessTable() {
+  const q     = document.getElementById('access-search').value.toLowerCase();
+  const role  = document.getElementById('access-role-filter').value;
+  const base  = accessData.filter(r => {
+    const r2 = (r['role']||r['Role']||'').trim();
+    return r2 === 'Admin' || r2 === 'HR';
+  });
+  const filtered = base.filter(r => {
+    const matchQ    = !q || Object.values(r).some(v => v.toLowerCase().includes(q));
+    const matchRole = !role || (r['role']||r['Role']||'').trim() === role;
+    return matchQ && matchRole;
+  });
+  renderAccessTable(filtered);
+}
+
+function renderAccessTable(data) {
+  const el = document.getElementById('access-table-content');
+  if (!data.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">👤</div><div class="empty-text">Tidak ada data.</div></div>';
+    return;
+  }
+  const keys = ['NIK','nama','role','layer'].filter(k => data[0][k] !== undefined || data[0][k.toUpperCase()] !== undefined || data[0][k.charAt(0).toUpperCase()+k.slice(1)] !== undefined);
+  // Use all keys from first row
+  const allKeys = Object.keys(data[0]);
+
+  let thead = '<tr>' + allKeys.map(k => `<th>${k}</th>`).join('') + '</tr>';
+  let tbody = data.map(row => {
+    const role = (row['role']||row['Role']||'').trim();
+    const chipClass = role === 'Admin' ? 'chip-amber' : 'chip-blue';
+    return '<tr>' + allKeys.map(k => {
+      const v = row[k] || '-';
+      if ((k === 'role' || k === 'Role') && (v === 'Admin' || v === 'HR')) {
+        return `<td><span class="chip ${chipClass}">${v}</span></td>`;
+      }
+      return `<td>${v}</td>`;
+    }).join('') + '</tr>';
+  }).join('');
+
+  el.innerHTML = `
+    <div style="margin-bottom:12px;font-size:0.8rem;color:var(--gray-500);">
+      Menampilkan ${data.length} pengguna (HR & Admin)
+    </div>
+    <div class="table-wrap"><table><thead>${thead}</thead><tbody>${tbody}</tbody></table></div>
+    <div class="info-alert" style="margin-top:16px;">
+      Untuk mengubah akses, edit langsung di tab <strong>Access</strong> Google Sheet, lalu refresh portal.
+    </div>
+  `;
+}
+
+// ============================================================
+// LOGOUT
+// ============================================================
+function doLogout() {
+  currentUser = null; dbData = []; partData = []; recapData = [];
+  loadedTabs = {}; filteredPartData = [];
+  document.getElementById('app').classList.remove('active');
+  document.getElementById('login-screen').style.display = '';
+  document.getElementById('nik-input').value = '';
+  document.getElementById('btn-login').disabled = false;
+  document.getElementById('btn-login').textContent = 'Masuk ke Portal';
+  hideLoginError();
+}
+
+// ============================================================
+// TOAST
+// ============================================================
+let toastTimer;
+function showToast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show' + (type ? ' '+type : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.classList.remove('show'); }, 3500);
+}
+
+// ============================================================
+// INIT
+// ============================================================
+setupLogos();
+
+// If maintenance is active and no user, show maintenance screen
+// (handled at login time)
+</script>
+</body>
+</html>
