@@ -559,6 +559,7 @@
     </div>
     <div class="login-heading">Selamat Datang</div>
     <div class="login-sub">Masukkan NIK Anda untuk mengakses portal</div>
+    <div id="preload-status" style="font-size:0.72rem;color:#94a3b8;text-align:center;margin-top:4px;min-height:16px;transition:color 0.3s;"></div>
     <div class="login-maint-alert" id="login-maint-alert">&#9888;&#65039; <strong>Portal sedang maintenance.</strong><br>Untuk sementara karyawan/HR tidak dapat mengakses portal. Admin tetap dapat login untuk mengelola sistem.</div>
     <label class="field-label" for="nik-input">NIK Karyawan</label>
     <input class="field-input" id="nik-input" type="text" placeholder="Contoh: 12345 atau KG001" autocomplete="off" autofocus>
@@ -728,6 +729,9 @@
 // gviz/tq endpoint — dirancang untuk dibaca browser, ada CORS header, tidak redirect
 const SHEET_ID = '11T58NlMVg2NAiygt3IDl0nR-UZJoWZBLbui1TFZmpFE';
 
+// Use published CSV URL for faster loading (bypasses gviz overhead)
+// Format: /pub?output=csv&gid=SHEET_GID
+// Fallback to gviz if pub URL not available
 function sheetUrl(tabName) {
   return 'https://docs.google.com/spreadsheets/d/' + SHEET_ID +
     '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent(tabName);
@@ -913,9 +917,27 @@ function shortUrl(url) {
 // CSV FETCH — single request, in-memory cache per URL
 // ============================================================
 const _csvCache = {};
-async function fetchCSV(url) {
+async function fetchCSV(url, attempt=1) {
   if (_csvCache[url]) return _csvCache[url]; // already loaded, instant
-  const res = await fetch(url);
+
+  // 12 second timeout per attempt — Google Sheets can be slow
+  const controller = new AbortController();
+  const timeoutId  = setTimeout(() => controller.abort(), 12000);
+
+  let res;
+  try {
+    res = await fetch(url, { signal: controller.signal });
+  } catch(e) {
+    clearTimeout(timeoutId);
+    // Retry once on network error / timeout
+    if (attempt < 2) {
+      await new Promise(r => setTimeout(r, 800)); // wait 0.8s then retry
+      return fetchCSV(url, attempt + 1);
+    }
+    throw new Error('Koneksi ke Google Sheet timeout. Periksa koneksi internet Anda.');
+  }
+  clearTimeout(timeoutId);
+
   if (!res.ok) throw new Error('HTTP ' + res.status);
   const text = await res.text();
   if (text.slice(0, 100).toLowerCase().includes('<html')) {
@@ -932,11 +954,37 @@ async function fetchCSV(url) {
 // Preload access DAN database di background begitu halaman terbuka
 // Simpan sebagai Promise — kalau login diklik sebelum selesai, tinggal await Promise yang sama
 let _preloadPromise = null;
-window.addEventListener('load', () => {
-  _preloadPromise = Promise.all([
-    fetchCSV(TABS.access).then(data => { accessData = data; }),
-    fetchCSV(TABS.database).then(data => { dbData = data; })
-  ]).catch(() => {});
+let _accessPromise  = null;
+let _dbPromise      = null;
+
+// Start fetching immediately — don't wait for 'load' event
+// Access tab is small (~KB), database is large (~100KB+)
+// Fetch them as separate promises so login can use access result
+// even before database finishes loading
+function startPreload() {
+  if (_accessPromise) return; // already started
+  _accessPromise = fetchCSV(TABS.access).then(data => { accessData = data; return data; }).catch(() => []);
+  _dbPromise     = fetchCSV(TABS.database).then(data => { dbData = data; return data; }).catch(() => []);
+  _preloadPromise = Promise.all([_accessPromise, _dbPromise]);
+}
+
+// Start immediately when script runs (before DOM ready)
+startPreload();
+
+// Show loading status in login form once DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  const statusEl = document.getElementById('preload-status');
+  if (!statusEl) return;
+  statusEl.textContent = 'Memuat data...';
+  // Update when access done
+  if (_accessPromise) _accessPromise.then(() => {
+    statusEl.textContent = 'Data akses siap ✔';
+  }).catch(() => {});
+  // Update when db done  
+  if (_dbPromise) _dbPromise.then(() => {
+    statusEl.textContent = 'Data siap ✔ Silakan masukkan NIK';
+    statusEl.style.color = '#22c55e';
+  }).catch(() => { statusEl.textContent = ''; });
 });
 
 async function doLogin() {
@@ -949,12 +997,10 @@ async function doLogin() {
   hideLoginError();
 
   try {
-    // Tunggu preload selesai kalau masih berjalan — tidak ada fetch ganda
-    if (_preloadPromise) await _preloadPromise;
-
-    // Fallback kalau preload gagal
+    // Step 1: Pastikan Access tab selesai dulu (kecil, cepat)
+    // DB fetch jalan paralel di background — tidak perlu tunggu kalau NIK ada di Access
+    if (_accessPromise) await _accessPromise;
     if (accessData.length === 0) accessData = await fetchCSV(TABS.access);
-    if (dbData.length === 0) dbData = await fetchCSV(TABS.database);
 
     // Cari NIK di tab access (HR/Admin)
     const user = accessData.find(r => {
@@ -970,7 +1016,8 @@ async function doLogin() {
       layer = getAccessLayer(user);
       found = true;
     } else {
-      // Bukan HR/Admin — cek di Database (4000+ baris, fetch sekali lalu di-cache)
+      // Bukan HR/Admin — tunggu database selesai (sudah jalan paralel sejak awal)
+      if (_dbPromise) await _dbPromise;
       if (dbData.length === 0) dbData = await fetchCSV(TABS.database);
       const dbUser = dbData.find(r => {
         const dbNIK = normalizeNIK(r['NIK'] || r['nik'] || '');
@@ -1265,67 +1312,41 @@ async function loadDashboard() {
 }
 
 function renderDashboard(el) {
-  // ── PERBAIKAN LOGIKA REKAP ──────────────────────────────────────────────────
-  // 1. Hanya hitung baris yang punya NIK valid (non-empty) agar tidak ada row
-  //    kosong / header yang ikut terhitung.
-  // 2. noActivity  = Learning Hours == 0  (bukan All Hours, supaya sesuai Recap)
-  // 3. inProgress  = Learning Hours > 0 AND < 18  (eksplisit, bukan sisa)
-  // 4. completed   = Learning Hours >= 18
-  // 5. Mandatory count: jumlah dari 6 topik mandatory (Sustainability, Video
-  //    Production, AI General, AI for Newsroom, AI Media Intelligence, Creative
-  //    Thinking) yang jam-nya > 0, BUKAN dari kolom First/Second/Third Mandatory
-  //    (karena kolom itu merupakan urutan pengambilan, bukan jumlah topik)
-  // ───────────────────────────────────────────────────────────────────────────
-
-  // Filter hanya baris dengan NIK non-empty
+  // Filter hanya baris dengan NIK valid (exclude baris kosong/header)
   const validData = dbData.filter(r => {
     const nik = (r['NIK'] || r['No NIK'] || '').toString().trim();
     return nik !== '' && nik.toLowerCase() !== 'nik' && nik.toLowerCase() !== 'no nik';
   });
 
   const totalEmp   = validData.length;
-  // noActivity: Learning Hours = 0 (belum ada jam belajar sama sekali)
+  // noActivity: Learning Hours = 0 (sesuai definisi Recap tab)
   const noActivity = validData.filter(r => (parseFloat(r['Learning Hours']||0)||0) === 0).length;
   // completed: Learning Hours >= 18
   const completed  = validData.filter(r => (parseFloat(r['Learning Hours']||0)||0) >= 18).length;
-  // inProgress: Learning Hours > 0 AND < 18 (eksplisit, bukan sisa)
+  // inProgress: eksplisit > 0 AND < 18 (bukan sisa)
   const inProgress = validData.filter(r => {
     const lh = parseFloat(r['Learning Hours']||0)||0;
     return lh > 0 && lh < 18;
   }).length;
   const totalHours = validData.reduce((s,r) => s + (parseFloat(r['Learning Hours']||0)||0), 0);
 
-  // Mandatory: hitung jumlah dari 6 topik yang jam-nya > 0
+  // Mandatory: hitung dari 6 topik actual (bukan kolom First/Second/Third Mandatory)
   const MAND_TOPICS = ['Sustainability','Video Production','AI General','AI for Newsroom','AI Media Intelligence','Creative Thinking'];
-  const mand3plus = validData.filter(r => {
-    const count = MAND_TOPICS.filter(t => (parseFloat(r[t]||0)||0) > 0).length;
-    return count >= 3;
-  }).length;
-  const mand2 = validData.filter(r => {
-    const count = MAND_TOPICS.filter(t => (parseFloat(r[t]||0)||0) > 0).length;
-    return count === 2;
-  }).length;
-  const mand1 = validData.filter(r => {
-    const count = MAND_TOPICS.filter(t => (parseFloat(r[t]||0)||0) > 0).length;
-    return count === 1;
-  }).length;
-  const mand0 = validData.filter(r => {
-    const count = MAND_TOPICS.filter(t => (parseFloat(r[t]||0)||0) > 0).length;
-    return count === 0;
-  }).length;
+  const mand3plus = validData.filter(r => MAND_TOPICS.filter(t => (parseFloat(r[t]||0)||0) > 0).length >= 3).length;
+  const mand2     = validData.filter(r => MAND_TOPICS.filter(t => (parseFloat(r[t]||0)||0) > 0).length === 2).length;
+  const mand1     = validData.filter(r => MAND_TOPICS.filter(t => (parseFloat(r[t]||0)||0) > 0).length === 1).length;
+  const mand0     = validData.filter(r => MAND_TOPICS.filter(t => (parseFloat(r[t]||0)||0) > 0).length === 0).length;
 
-  // Per-unit summary — gunakan validData dan definisi yang sudah diperbaiki
+  // Per-unit — gunakan validData dan definisi konsisten
   const units = {};
   validData.forEach(r => {
     const unit = r['Unit']||r['UNIT']||'Lainnya';
     if (!units[unit]) units[unit] = { total:0, noAct:0, inProg:0, comp:0, mand0:0, mand1:0, mand2:0, mand3p:0 };
     units[unit].total++;
     const lh = parseFloat(r['Learning Hours']||0)||0;
-    // Consistent dengan definisi global di atas
     if (lh === 0) units[unit].noAct++;
     else if (lh >= 18) units[unit].comp++;
     else units[unit].inProg++;
-    // Mandatory count per-unit juga pakai 6 topik
     const mc = MAND_TOPICS.filter(t => (parseFloat(r[t]||0)||0) > 0).length;
     if (mc === 0) units[unit].mand0++;
     else if (mc === 1) units[unit].mand1++;
