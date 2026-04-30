@@ -140,6 +140,19 @@
     margin-top: 16px; display: none;
   }
   .login-error.show { display: block; }
+  .login-maint-alert {
+    display: none;
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+    color: #9a3412;
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    font-size: 0.83rem;
+    line-height: 1.45;
+    margin: 18px 0;
+  }
+  .login-maint-alert.show { display: block; }
+  .login-maint-alert strong { color: #7c2d12; }
   .login-footer { text-align: center; color: var(--gray-300); font-size: 0.75rem; margin-top: 32px; }
 
   /* ===================== APP SHELL ===================== */
@@ -547,6 +560,10 @@
     </div>
     <div class="login-heading">Selamat Datang</div>
     <div class="login-sub">Masukkan NIK Anda untuk mengakses portal</div>
+    <div class="login-maint-alert" id="login-maint-alert">
+      ⚠️ <strong>Portal sedang maintenance.</strong><br>
+      Untuk sementara karyawan/HR tidak dapat mengakses portal. Admin tetap dapat login untuk mengelola sistem.
+    </div>
     <label class="field-label" for="nik-input">NIK Karyawan</label>
     <input class="field-input" id="nik-input" type="text" placeholder="Contoh: 12345 atau KG001" autocomplete="off" autofocus>
     <button class="btn-primary" id="btn-login" onclick="doLogin()">Masuk ke Portal</button>
@@ -711,16 +728,16 @@
 // ============================================================
 // CONFIG — UPDATE GID VALUES TO MATCH YOUR SHEET TABS
 // ============================================================
-const SHEET_BASE = 'https://docs.google.com/spreadsheets/d/11T58NlMVg2NAiygt3IDl0nR-UZJoWZBLbui1TFZmpFE/export?format=csv';
+const SHEET_ID = '11T58NlMVg2NAiygt3IDl0nR-UZJoWZBLbui1TFZmpFE';
+const SHEET_CSV_BASE = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=`;
 
-// ⚠️ IMPORTANT: Replace these GID numbers with your actual tab GIDs
-// Find them in the URL when you click each tab in Google Sheets (?gid=XXXXXXXX)
+// GID tiap tab Google Sheet
 const TABS = {
-  access:        SHEET_BASE + '&gid=185308502', // Access tab
-  database:      SHEET_BASE + '&gid=257024260', // Database tab
-  participation: SHEET_BASE + '&gid=0',         // Learning Participation tab
-  recap:         SHEET_BASE + '&gid=550872410', // Recap tab
-  searchbar:     SHEET_BASE + '&gid=904954376', // Search Bar tab
+  access:        SHEET_CSV_BASE + '185308502', // Access tab
+  database:      SHEET_CSV_BASE + '257024260', // Database tab
+  participation: SHEET_CSV_BASE + '0',         // Learning Participation tab
+  recap:         SHEET_CSV_BASE + '550872410', // Recap tab
+  searchbar:     SHEET_CSV_BASE + '904954376', // Search Bar tab
 };
 
 const GOOGLE_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSf8U74xTaJLESZOAVU8qVGYPA-yK_9ypm8n6wyRMHTw_ihTRQ/viewform';
@@ -730,6 +747,54 @@ const LOGO_URL = 'logo.png'; // place logo.png in same folder as index.html
 
 // Layer hierarchy — lower number = higher access
 const LAYER_ORDER = ['Admin', 'HR', '1', '2', '3', '4', 'NL'];
+
+
+function normalizeRole(role) {
+  const r = (role || '').toString().trim().toLowerCase();
+  if (r === 'admin') return 'Admin';
+  if (r === 'hr') return 'HR';
+  return 'Employee';
+}
+
+function normalizeLayer(layer, role='Employee') {
+  const raw = (layer || '').toString().trim();
+  const clean = raw.replace(/^layer\s*/i, '').toUpperCase();
+  const normalizedRole = normalizeRole(role);
+
+  if (clean === 'ADMIN') return 'Admin';
+  if (clean === 'HR') return 'HR';
+  if (['1','2','3','4','NL'].includes(clean)) return clean;
+
+  if (normalizedRole === 'Admin') return 'Admin';
+  if (normalizedRole === 'HR') return 'HR';
+  return 'NL';
+}
+
+function getRowValue(row, keys, fallback='') {
+  for (const key of keys) {
+    if (row && row[key] !== undefined && row[key] !== null) return row[key];
+  }
+  return fallback;
+}
+
+function getAccessRole(row) {
+  return normalizeRole(getRowValue(row, ['role','Role','ROLE'], 'Employee'));
+}
+
+function getAccessLayer(row) {
+  const role = getAccessRole(row);
+  return normalizeLayer(getRowValue(row, ['layer','Layer','LAYER'], ''), role);
+}
+
+function isAdminOrHR(user=currentUser) {
+  return !!user && (user.role === 'Admin' || user.role === 'HR');
+}
+
+function canUseLayerSearch(user=currentUser) {
+  if (!user || user.role !== 'Employee') return false;
+  const layer = normalizeLayer(user.layer, user.role);
+  return ['1','2','3','4'].includes(layer);
+}
 
 // ============================================================
 // STATE
@@ -761,6 +826,24 @@ function setMaintenanceState(val) {
   localStorage.setItem('kg_maintenance', val ? '1' : '0');
   if (val) localStorage.setItem('kg_maint_time', new Date().toLocaleString('id-ID'));
 }
+function updateLoginMaintenanceNotice(active = getMaintenanceState()) {
+  const alert = document.getElementById('login-maint-alert');
+  const btn = document.getElementById('btn-login');
+  const input = document.getElementById('nik-input');
+  if (alert) alert.classList.toggle('show', !!active);
+  if (input) input.placeholder = active ? 'Masukkan NIK Admin untuk masuk' : 'Contoh: 12345 atau KG001';
+  if (btn) {
+    btn.title = active ? 'Portal sedang maintenance. Admin tetap bisa login.' : '';
+    if (!btn.disabled) btn.textContent = active ? 'Masuk sebagai Admin' : 'Masuk ke Portal';
+  }
+}
+
+function resetLoginButton() {
+  const btn = document.getElementById('btn-login');
+  if (!btn) return;
+  btn.disabled = false;
+  btn.textContent = getMaintenanceState() ? 'Masuk sebagai Admin' : 'Masuk ke Portal';
+}
 function checkMaintenanceOnLogin() {
   if (getMaintenanceState()) {
     // Only admins can pass through
@@ -776,6 +859,7 @@ function toggleMaintenance() {
   showToast(active ? 'Mode Maintenance AKTIF — karyawan tidak bisa login' : 'Mode Maintenance NONAKTIF — portal kembali normal', active ? 'error' : 'success');
 }
 function updateMaintenanceUI(active) {
+  updateLoginMaintenanceNotice(active);
   const status = document.getElementById('maint-status');
   const banner = document.getElementById('maint-banner');
   const timeInfo = document.getElementById('maint-time-info');
@@ -819,7 +903,8 @@ function parseCSVRow(line) {
   return result;
 }
 async function fetchCSV(url) {
-  const res = await fetch(url);
+  const joiner = url.includes('?') ? '&' : '?';
+  const res = await fetch(url + joiner + 'cache=' + Date.now());
   if (!res.ok) throw new Error('Gagal mengambil data: ' + res.status);
   const text = await res.text();
   return parseCSV(text);
@@ -853,8 +938,8 @@ async function doLogin() {
 
     if (user) {
       name  = user['nama'] || user['NAMA'] || user['Name'] || nik;
-      role  = user['role'] || user['Role'] || user['ROLE'] || 'Employee';
-      layer = user['layer'] || user['Layer'] || user['LAYER'] || 'NL';
+      role  = getAccessRole(user);
+      layer = getAccessLayer(user);
       found = true;
     } else {
       // Try database tab
@@ -870,15 +955,13 @@ async function doLogin() {
       }
     }
 
-    if (!found) { showLoginError('NIK tidak ditemukan. Pastikan NIK yang Anda masukkan benar.'); btn.disabled = false; btn.textContent = 'Masuk ke Portal'; return; }
+    if (!found) { showLoginError('NIK tidak ditemukan. Pastikan NIK yang Anda masukkan benar.'); resetLoginButton(); return; }
 
     // Check maintenance — only Admin can pass
     if (getMaintenanceState() && role !== 'Admin') {
-      showLoginError('Portal sedang dalam maintenance. Silakan coba kembali nanti.');
-      btn.disabled = false; btn.textContent = 'Masuk ke Portal';
-      // Show maintenance screen briefly
-      document.getElementById('maintenance-screen').classList.add('active');
-      setTimeout(() => document.getElementById('maintenance-screen').classList.remove('active'), 3000);
+      updateLoginMaintenanceNotice(true);
+      showLoginError('Mode Maintenance sedang aktif. Karyawan belum dapat mengakses portal. Silakan coba lagi nanti atau hubungi tim HR.');
+      resetLoginButton();
       return;
     }
 
@@ -887,7 +970,7 @@ async function doLogin() {
 
   } catch(e) {
     showLoginError('Terjadi kesalahan: ' + e.message);
-    btn.disabled = false; btn.textContent = 'Masuk ke Portal';
+    resetLoginButton();
   }
 }
 function showLoginError(msg) { const el = document.getElementById('login-error'); el.textContent = msg; el.classList.add('show'); }
@@ -929,26 +1012,44 @@ function initApp() {
 // ============================================================
 // NAVIGATION
 // ============================================================
+function normalizeRole(role) {
+  const r = (role || 'Employee').toString().trim().toLowerCase();
+  if (r === 'admin') return 'Admin';
+  if (r === 'hr') return 'HR';
+  return 'Employee';
+}
+function normalizeLayer(layer) {
+  const l = (layer || 'NL').toString().trim().toUpperCase();
+  return l === 'NL' ? 'NL' : l;
+}
+function canEmployeeUseSearch() {
+  if (!currentUser || normalizeRole(currentUser.role) !== 'Employee') return false;
+  return ['1','2','3','4'].includes(normalizeLayer(currentUser.layer));
+}
 function buildNav() {
   const role = currentUser.role;
+  const layer = normalizeLayer(currentUser.layer, role);
   const tabs = [];
 
   if (role === 'Employee') {
-    tabs.push({ id: 'my-learning', label: '📚 Learning Saya', load: loadMyLearning });
-    tabs.push({ id: 'hub',         label: '🎓 Learning Hub' });
+    tabs.push({ id: 'my-learning', label: '\uD83D\uDCDA Learning Saya', load: loadMyLearning });
+    if (layer !== 'NL') {
+      tabs.push({ id: 'search', label: '\uD83D\uDD0D Cari Karyawan' });
+    }
+    tabs.push({ id: 'hub', label: '\uD83C\uDF93 Learning Hub' });
   } else if (role === 'HR') {
-    tabs.push({ id: 'dashboard',     label: '📊 Dashboard',   load: loadDashboard });
-    tabs.push({ id: 'participation', label: '📋 Partisipasi', load: loadParticipation });
-    tabs.push({ id: 'search',        label: '🔍 Cari Karyawan' });
-    tabs.push({ id: 'my-learning',   label: '📚 Learning Saya', load: loadMyLearning });
-    tabs.push({ id: 'hub',           label: '🎓 Learning Hub' });
+    tabs.push({ id: 'dashboard',     label: '\uD83D\uDCCA Dashboard',   load: loadDashboard });
+    tabs.push({ id: 'participation', label: '\uD83D\uDCCB Partisipasi', load: loadParticipation });
+    tabs.push({ id: 'search',        label: '\uD83D\uDD0D Cari Karyawan' });
+    tabs.push({ id: 'my-learning',   label: '\uD83D\uDCDA Learning Saya', load: loadMyLearning });
+    tabs.push({ id: 'hub',           label: '\uD83C\uDF93 Learning Hub' });
   } else if (role === 'Admin') {
-    tabs.push({ id: 'dashboard',     label: '📊 Dashboard',   load: loadDashboard });
-    tabs.push({ id: 'participation', label: '📋 Partisipasi', load: loadParticipation });
-    tabs.push({ id: 'search',        label: '🔍 Cari Karyawan' });
-    tabs.push({ id: 'my-learning',   label: '📚 Learning Saya', load: loadMyLearning });
-    tabs.push({ id: 'hub',           label: '🎓 Learning Hub' });
-    tabs.push({ id: 'access',        label: '⚙️ Kelola Akses', load: loadAccessManagement });
+    tabs.push({ id: 'dashboard',     label: '\uD83D\uDCCA Dashboard',   load: loadDashboard });
+    tabs.push({ id: 'participation', label: '\uD83D\uDCCB Partisipasi', load: loadParticipation });
+    tabs.push({ id: 'search',        label: '\uD83D\uDD0D Cari Karyawan' });
+    tabs.push({ id: 'my-learning',   label: '\uD83D\uDCDA Learning Saya', load: loadMyLearning });
+    tabs.push({ id: 'hub',           label: '\uD83C\uDF93 Learning Hub' });
+    tabs.push({ id: 'access',        label: '\u2699\uFE0F Kelola Akses', load: loadAccessManagement });
   }
 
   const nav = document.getElementById('app-nav');
@@ -1099,41 +1200,62 @@ async function hrSearch() {
 
   try {
     if (dbData.length === 0) dbData = await fetchCSV(TABS.database);
+    if (accessData.length === 0) accessData = await fetchCSV(TABS.access);
 
-    // HR/Admin can search anyone; Employee layer logic
-    let emp = null;
-    if (currentUser.role === 'HR' || currentUser.role === 'Admin') {
-      emp = dbData.find(r => (r['NIK']||'').toString().trim().toLowerCase() === nik.toLowerCase());
-    } else {
-      // Employee: check layer permission
-      emp = dbData.find(r => (r['NIK']||'').toString().trim().toLowerCase() === nik.toLowerCase());
-      if (emp) {
-        // Check if current user has permission based on layer
-        const targetUserAccess = accessData.find(a => (a['NIK']||'').toString().trim().toLowerCase() === nik.toLowerCase());
-        const targetLayer = targetUserAccess ? (targetUserAccess['layer']||'NL') : 'NL';
-        if (!canAccessLayer(currentUser.layer, targetLayer) && nik !== currentUser.nik) {
-          el.innerHTML = '<div class="empty-state"><div class="empty-icon">🔒</div><div class="empty-text">Anda tidak memiliki akses untuk melihat data karyawan ini.</div></div>';
-          return;
-        }
+    const targetNik = nik.toLowerCase();
+    const myNik = currentUser.nik.toString().trim().toLowerCase();
+    const isPrivileged = currentUser.role === 'HR' || currentUser.role === 'Admin';
+    const myLayer = normalizeLayer(currentUser.layer, currentUser.role);
+
+    const emp = dbData.find(r => (r['NIK']||r['nik']||'').toString().trim().toLowerCase() === targetNik);
+
+    if (!emp) {
+      el.innerHTML = '<div class="empty-state"><div class="empty-icon">&#128533;</div><div class="empty-text">NIK tidak ditemukan dalam database.</div></div>';
+      return;
+    }
+
+    if (!isPrivileged && targetNik !== myNik) {
+      const targetUserAccess = accessData.find(a => (a['NIK']||a['nik']||'').toString().trim().toLowerCase() === targetNik) || {};
+      const targetLayerRaw = targetUserAccess['layer'] || targetUserAccess['Layer'] || targetUserAccess['LAYER'] || emp['layer'] || emp['Layer'] || emp['LAYER'] || 'NL';
+      const targetRoleRaw = targetUserAccess['role'] || targetUserAccess['Role'] || targetUserAccess['ROLE'] || 'Employee';
+      const targetLayer = normalizeLayer(targetLayerRaw, targetRoleRaw);
+
+      if (myLayer === 'NL' || !canAccessLayer(myLayer, targetLayer)) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-icon">&#128274;</div><div class="empty-text">Anda tidak memiliki akses untuk melihat data karyawan ini. Akses pencarian mengikuti layer di tab Access.</div></div>';
+        return;
       }
     }
 
-    if (!emp) {
-      el.innerHTML = '<div class="empty-state"><div class="empty-icon">😕</div><div class="empty-text">NIK tidak ditemukan dalam database.</div></div>';
-      return;
-    }
     el.innerHTML = buildEmployeeCard(emp);
   } catch(e) {
-    el.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Error: ' + e.message + '</div></div>';
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">&#9888;&#65039;</div><div class="empty-text">Error: ' + e.message + '</div></div>';
   }
+}
+
+function normalizeLayer(layer, role='Employee') {
+  const r = (role || '').toString().trim().toLowerCase();
+  const v = (layer || '').toString().trim();
+  const lower = v.toLowerCase();
+
+  if (r === 'admin' || lower === 'admin') return 'Admin';
+  if (r === 'hr' || lower === 'hr') return 'HR';
+  if (['1','2','3','4'].includes(v)) return v;
+  if (lower.includes('layer 1')) return '1';
+  if (lower.includes('layer 2')) return '2';
+  if (lower.includes('layer 3')) return '3';
+  if (lower.includes('layer 4')) return '4';
+  if (lower === 'nl' || lower === 'non layer' || lower === 'non-layer') return 'NL';
+  return 'NL';
 }
 
 function canAccessLayer(myLayer, targetLayer) {
   const hierarchy = ['Admin','HR','1','2','3','4','NL'];
-  const myIdx     = hierarchy.indexOf(myLayer);
-  const tgtIdx    = hierarchy.indexOf(targetLayer);
-  if (myIdx === -1) return false;
-  return myIdx <= tgtIdx; // lower index = higher privilege
+  const my = normalizeLayer(myLayer);
+  const target = normalizeLayer(targetLayer);
+  const myIdx = hierarchy.indexOf(my);
+  const tgtIdx = hierarchy.indexOf(target);
+  if (myIdx === -1 || tgtIdx === -1) return false;
+  return myIdx < tgtIdx; // only lower layers; own NIK is handled before this check
 }
 
 // ============================================================
@@ -1142,7 +1264,7 @@ function canAccessLayer(myLayer, targetLayer) {
 async function loadDashboard() {
   const el = document.getElementById('dashboard-content');
   try {
-    if (recapData.length === 0) recapData = await fetchCSV(TABS.recap);
+    // Dashboard dihitung dari tab Database. Tab Recap tidak wajib dibaca.
     if (dbData.length === 0) dbData = await fetchCSV(TABS.database);
     renderDashboard(el);
   } catch(e) {
@@ -1443,9 +1565,9 @@ function doLogout() {
   document.getElementById('app').classList.remove('active');
   document.getElementById('login-screen').style.display = '';
   document.getElementById('nik-input').value = '';
-  document.getElementById('btn-login').disabled = false;
-  document.getElementById('btn-login').textContent = 'Masuk ke Portal';
+  resetLoginButton();
   hideLoginError();
+  updateLoginMaintenanceNotice(getMaintenanceState());
 }
 
 // ============================================================
@@ -1464,6 +1586,7 @@ function showToast(msg, type='') {
 // INIT
 // ============================================================
 setupLogos();
+updateLoginMaintenanceNotice(getMaintenanceState());
 
 // If maintenance is active and no user, show maintenance screen
 // (handled at login time)
