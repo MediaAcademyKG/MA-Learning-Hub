@@ -930,9 +930,10 @@ async function fetchCSV(url) {
 // LOGIN
 // ============================================================
 // Preload access DAN database di background begitu halaman terbuka
-// Keduanya berjalan paralel — tidak saling menunggu
+// Simpan sebagai Promise — kalau login diklik sebelum selesai, tinggal await Promise yang sama
+let _preloadPromise = null;
 window.addEventListener('load', () => {
-  Promise.all([
+  _preloadPromise = Promise.all([
     fetchCSV(TABS.access).then(data => { accessData = data; }),
     fetchCSV(TABS.database).then(data => { dbData = data; })
   ]).catch(() => {});
@@ -948,10 +949,12 @@ async function doLogin() {
   hideLoginError();
 
   try {
-    // Access tab: pakai cache kalau sudah preloaded
-    if (accessData.length === 0) {
-      accessData = await fetchCSV(TABS.access);
-    }
+    // Tunggu preload selesai kalau masih berjalan — tidak ada fetch ganda
+    if (_preloadPromise) await _preloadPromise;
+
+    // Fallback kalau preload gagal
+    if (accessData.length === 0) accessData = await fetchCSV(TABS.access);
+    if (dbData.length === 0) dbData = await fetchCSV(TABS.database);
 
     // Cari NIK di tab access (HR/Admin)
     const user = accessData.find(r => {
