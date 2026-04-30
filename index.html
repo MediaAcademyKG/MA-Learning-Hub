@@ -1265,32 +1265,68 @@ async function loadDashboard() {
 }
 
 function renderDashboard(el) {
-  // Try to use recap data, otherwise compute from database
-  const totalEmp = dbData.length;
-  const noActivity = dbData.filter(r => (parseFloat(r['All Hours']||0)||0) === 0).length;
-  const completed  = dbData.filter(r => (parseFloat(r['Learning Hours']||0)||0) >= 18).length;
-  const inProgress = totalEmp - noActivity - completed;
-  const totalHours = dbData.reduce((s,r) => s + (parseFloat(r['All Hours']||0)||0), 0);
+  // ── PERBAIKAN LOGIKA REKAP ──────────────────────────────────────────────────
+  // 1. Hanya hitung baris yang punya NIK valid (non-empty) agar tidak ada row
+  //    kosong / header yang ikut terhitung.
+  // 2. noActivity  = Learning Hours == 0  (bukan All Hours, supaya sesuai Recap)
+  // 3. inProgress  = Learning Hours > 0 AND < 18  (eksplisit, bukan sisa)
+  // 4. completed   = Learning Hours >= 18
+  // 5. Mandatory count: jumlah dari 6 topik mandatory (Sustainability, Video
+  //    Production, AI General, AI for Newsroom, AI Media Intelligence, Creative
+  //    Thinking) yang jam-nya > 0, BUKAN dari kolom First/Second/Third Mandatory
+  //    (karena kolom itu merupakan urutan pengambilan, bukan jumlah topik)
+  // ───────────────────────────────────────────────────────────────────────────
 
-  const mand3plus  = dbData.filter(r => {
-    const m1 = parseFloat(r['First Mandatory']||0)||0;
-    const m2 = parseFloat(r['Second Mandatory']||0)||0;
-    const m3 = parseFloat(r['Third Mandatory']||0)||0;
-    return (m1>0?1:0)+(m2>0?1:0)+(m3>0?1:0) >= 3;
+  // Filter hanya baris dengan NIK non-empty
+  const validData = dbData.filter(r => {
+    const nik = (r['NIK'] || r['No NIK'] || '').toString().trim();
+    return nik !== '' && nik.toLowerCase() !== 'nik' && nik.toLowerCase() !== 'no nik';
+  });
+
+  const totalEmp   = validData.length;
+  // noActivity: Learning Hours = 0 (belum ada jam belajar sama sekali)
+  const noActivity = validData.filter(r => (parseFloat(r['Learning Hours']||0)||0) === 0).length;
+  // completed: Learning Hours >= 18
+  const completed  = validData.filter(r => (parseFloat(r['Learning Hours']||0)||0) >= 18).length;
+  // inProgress: Learning Hours > 0 AND < 18 (eksplisit, bukan sisa)
+  const inProgress = validData.filter(r => {
+    const lh = parseFloat(r['Learning Hours']||0)||0;
+    return lh > 0 && lh < 18;
+  }).length;
+  const totalHours = validData.reduce((s,r) => s + (parseFloat(r['Learning Hours']||0)||0), 0);
+
+  // Mandatory: hitung jumlah dari 6 topik yang jam-nya > 0
+  const MAND_TOPICS = ['Sustainability','Video Production','AI General','AI for Newsroom','AI Media Intelligence','Creative Thinking'];
+  const mand3plus = validData.filter(r => {
+    const count = MAND_TOPICS.filter(t => (parseFloat(r[t]||0)||0) > 0).length;
+    return count >= 3;
+  }).length;
+  const mand2 = validData.filter(r => {
+    const count = MAND_TOPICS.filter(t => (parseFloat(r[t]||0)||0) > 0).length;
+    return count === 2;
+  }).length;
+  const mand1 = validData.filter(r => {
+    const count = MAND_TOPICS.filter(t => (parseFloat(r[t]||0)||0) > 0).length;
+    return count === 1;
+  }).length;
+  const mand0 = validData.filter(r => {
+    const count = MAND_TOPICS.filter(t => (parseFloat(r[t]||0)||0) > 0).length;
+    return count === 0;
   }).length;
 
-  // Per-unit summary
+  // Per-unit summary — gunakan validData dan definisi yang sudah diperbaiki
   const units = {};
-  dbData.forEach(r => {
+  validData.forEach(r => {
     const unit = r['Unit']||r['UNIT']||'Lainnya';
     if (!units[unit]) units[unit] = { total:0, noAct:0, inProg:0, comp:0, mand0:0, mand1:0, mand2:0, mand3p:0 };
     units[unit].total++;
     const lh = parseFloat(r['Learning Hours']||0)||0;
-    const ah = parseFloat(r['All Hours']||0)||0;
-    if (ah === 0) units[unit].noAct++;
+    // Consistent dengan definisi global di atas
+    if (lh === 0) units[unit].noAct++;
     else if (lh >= 18) units[unit].comp++;
     else units[unit].inProg++;
-    const mc = [r['First Mandatory'],r['Second Mandatory'],r['Third Mandatory']].filter(v=>(parseFloat(v)||0)>0).length;
+    // Mandatory count per-unit juga pakai 6 topik
+    const mc = MAND_TOPICS.filter(t => (parseFloat(r[t]||0)||0) > 0).length;
     if (mc === 0) units[unit].mand0++;
     else if (mc === 1) units[unit].mand1++;
     else if (mc === 2) units[unit].mand2++;
@@ -1350,9 +1386,19 @@ function renderDashboard(el) {
         <div class="stat-detail">${(totalEmp>0?((noActivity/totalEmp)*100).toFixed(1):0)}% dari total</div>
       </div>
       <div class="stat-card stat-cyan">
-        <div class="stat-label">≥3 Mandatory</div>
+        <div class="stat-label">≥3 Mandatory Topics</div>
         <div class="stat-value">${mand3plus.toLocaleString('id-ID')}</div>
         <div class="stat-detail">${mandPct}% dari total</div>
+      </div>
+      <div class="stat-card stat-amber">
+        <div class="stat-label">2 Mandatory Topics</div>
+        <div class="stat-value">${mand2.toLocaleString('id-ID')}</div>
+        <div class="stat-detail">${(totalEmp>0?((mand2/totalEmp)*100).toFixed(1):0)}% dari total</div>
+      </div>
+      <div class="stat-card stat-red">
+        <div class="stat-label">Belum / 1 Mandatory</div>
+        <div class="stat-value">${(mand0+mand1).toLocaleString('id-ID')}</div>
+        <div class="stat-detail">${(totalEmp>0?(((mand0+mand1)/totalEmp)*100).toFixed(1):0)}% dari total</div>
       </div>
       <div class="stat-card stat-blue">
         <div class="stat-label">Total Jam Belajar</div>
