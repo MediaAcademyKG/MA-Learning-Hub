@@ -735,9 +735,9 @@ const TAB_GIDS = {
   searchbar:     '904954376',
 };
 
-// single=true + output=csv langsung ke tab → tidak ada redirect 307
+// Format URL yang terbukti kerja: output=csv&gid=xxx (tanpa single=true)
 function sheetUrl(gid) {
-  return PUB + '?single=true&output=csv&gid=' + String(gid);
+  return PUB + '?output=csv&gid=' + String(gid);
 }
 
 const TABS = {
@@ -936,10 +936,13 @@ async function fetchCSV(url) {
 // ============================================================
 // LOGIN
 // ============================================================
-// Preload access tab di background setelah halaman terbuka
-// supaya saat user klik login, data sudah siap
+// Preload access DAN database di background begitu halaman terbuka
+// Keduanya berjalan paralel — tidak saling menunggu
 window.addEventListener('load', () => {
-  fetchCSV(TABS.access).then(data => { accessData = data; }).catch(() => {});
+  Promise.all([
+    fetchCSV(TABS.access).then(data => { accessData = data; }),
+    fetchCSV(TABS.database).then(data => { dbData = data; })
+  ]).catch(() => {});
 });
 
 async function doLogin() {
