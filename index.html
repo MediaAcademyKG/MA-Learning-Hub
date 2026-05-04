@@ -955,15 +955,12 @@ let _preloadError = null; // stores error from preload if any
 
 function startPreload() {
   if (_accessPromise) return;
-  // Access tab is small — login only needs this to complete
+  // Access tab saja yang di-preload — dibutuhkan untuk login
+  // Tab lain (Database, Search Bar, dll) di-fetch on-demand saat tab diklik
   _accessPromise = fetchCSV(TABS.access)
     .then(data => { accessData = data; return data; })
-    .catch(e => { _preloadError = e; return []; }); // store error, return empty
-  // Database tab is large — loads in parallel in background
-  _dbPromise = fetchCSV(TABS.database)
-    .then(data => { dbData = data; return data; })
-    .catch(e => { if (!_preloadError) _preloadError = e; return []; });
-  _preloadPromise = Promise.all([_accessPromise, _dbPromise]);
+    .catch(e => { _preloadError = e; return []; });
+  _preloadPromise = _accessPromise;
 }
 
 // Start immediately when script loads — not waiting for 'load' event
@@ -976,13 +973,7 @@ document.addEventListener('DOMContentLoaded', () => {
   el.textContent = 'Memuat data...';
   if (_accessPromise) _accessPromise.then(data => {
     if (data && data.length > 0) {
-      el.textContent = 'Data akses siap ✔';
-      el.style.color = '#64b5f6';
-    }
-  }).catch(() => {});
-  if (_dbPromise) _dbPromise.then(data => {
-    if (data && data.length > 0) {
-      el.textContent = 'Data siap ✔  Silakan masukkan NIK';
+      el.textContent = 'Siap ✔  Silakan masukkan NIK';
       el.style.color = '#4ade80';
     } else if (_preloadError) {
       el.textContent = '⚠ Gagal memuat data. Pastikan Google Sheet sudah di-publish.';
@@ -1007,15 +998,10 @@ async function doLogin() {
     // Tunggu Access selesai (sudah loading sejak halaman dibuka)
     if (_accessPromise) await _accessPromise;
 
-    // Jika preload gagal, langsung tampilkan error yang informatif
-    if (_preloadError && accessData.length === 0) {
-      throw _preloadError;
-    }
-
-    // Jika data kosong tapi tidak ada error, coba fetch ulang sekali
+    if (_preloadError && accessData.length === 0) throw _preloadError;
     if (accessData.length === 0) accessData = await fetchCSV(TABS.access);
 
-    // Cari NIK di tab access (HR/Admin)
+    // Cari NIK di tab Access (HR/Admin/Employee dengan layer)
     const user = accessData.find(r => {
       const userNIK = normalizeNIK(r['NIK'] || r['nik'] || '');
       return userNIK.toLowerCase() === nik.toLowerCase();
@@ -1029,18 +1015,13 @@ async function doLogin() {
       layer = getAccessLayer(user);
       found = true;
     } else {
-      // Bukan HR/Admin — tunggu DB yang sudah loading di background
-      if (_dbPromise) await _dbPromise;
-      // Jika DB gagal load, tampilkan error
-      if (_preloadError && dbData.length === 0) throw _preloadError;
-      if (dbData.length === 0) dbData = await fetchCSV(TABS.database);
-      const dbUser = dbData.find(r => {
-        const dbNIK = normalizeNIK(r['NIK'] || r['nik'] || '');
-        return dbNIK.toLowerCase() === nik.toLowerCase();
-      });
-      if (dbUser) {
-        name  = dbUser['NAMA'] || dbUser['nama'] || dbUser['Name'] || rawNik;
+      // Tidak ada di Access tab — cek di Search Bar (lebih ringan dari Database)
+      const sbRows = await fetchCSV(TABS.searchbar);
+      const sbUser = sbRows.find(r => normalizeNIK(r['NIK']||r['nik']||'').toLowerCase() === nik.toLowerCase());
+      if (sbUser) {
+        name  = sbUser['Name'] || sbUser['NAMA'] || sbUser['nama'] || rawNik;
         found = true;
+        role  = 'Employee'; layer = 'NL';
       }
     }
 
