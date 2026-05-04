@@ -559,6 +559,7 @@
     </div>
     <div class="login-heading">Selamat Datang</div>
     <div class="login-sub">Masukkan NIK Anda untuk mengakses portal</div>
+    <div id="preload-status" style="font-size:0.72rem;text-align:center;margin-bottom:4px;min-height:16px;transition:color 0.4s;color:#94a3b8;"></div>
     <div class="login-maint-alert" id="login-maint-alert">&#9888;&#65039; <strong>Portal sedang maintenance.</strong><br>Untuk sementara karyawan/HR tidak dapat mengakses portal. Admin tetap dapat login untuk mengelola sistem.</div>
     <label class="field-label" for="nik-input">NIK Karyawan</label>
     <input class="field-input" id="nik-input" type="text" placeholder="Contoh: 12345 atau KG001" autocomplete="off" autofocus>
@@ -724,21 +725,15 @@
 // ============================================================
 // CONFIG - GOOGLE SHEET
 // ============================================================
-// Pakai link Publish to web CSV, bukan gviz/sheet=..., supaya cukup publish
-// document dan tiap tab dibaca lewat GID masing-masing.
-const SHEET_PUBLISH_BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAnkC8gLRwI8QsiKzbaaQV_w577RvjKKMRfQAw96ZCt0cNBfiIuCtqtm4fxzH8h5-X_0/pub';
-
-function sheetUrl(gid) {
-  // Format publish-to-web yang paling stabil untuk tab tertentu.
-  return SHEET_PUBLISH_BASE + '?gid=' + encodeURIComponent(gid) + '&single=true&output=csv';
-}
-
+// &single=true mencegah 307 redirect dari Google — ini kunci kecepatan
+// Published-to-web CSV URLs — direct CDN delivery, no gviz rendering overhead
+// Significantly faster than gviz/tq (1-2s vs 15-25s cold start)
 const TABS = {
-  access:        sheetUrl('185308502'),
-  database:      sheetUrl('257024260'),
-  participation: sheetUrl('0'),
-  recap:         sheetUrl('550872410'),
-  searchbar:     sheetUrl('904954376'),
+  access:        'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAnkC8gLRwI8QsiKzbaaQV_w577RvjKKMRfQAw96ZCt0cNBfiIuCtqtm4fxzH8h5-X_0/pub?gid=185308502&single=true&output=csv',
+  database:      'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAnkC8gLRwI8QsiKzbaaQV_w577RvjKKMRfQAw96ZCt0cNBfiIuCtqtm4fxzH8h5-X_0/pub?gid=257024260&single=true&output=csv',
+  participation: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAnkC8gLRwI8QsiKzbaaQV_w577RvjKKMRfQAw96ZCt0cNBfiIuCtqtm4fxzH8h5-X_0/pub?gid=0&single=true&output=csv',
+  recap:         'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAnkC8gLRwI8QsiKzbaaQV_w577RvjKKMRfQAw96ZCt0cNBfiIuCtqtm4fxzH8h5-X_0/pub?gid=550872410&single=true&output=csv',
+  searchbar:     'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAnkC8gLRwI8QsiKzbaaQV_w577RvjKKMRfQAw96ZCt0cNBfiIuCtqtm4fxzH8h5-X_0/pub?gid=904954376&single=true&output=csv',
 };
 
 // NIK normalization: strip leading zeros untuk NIK angka murni
@@ -910,83 +905,89 @@ function shortUrl(url) {
 }
 
 // ============================================================
-// CSV FETCH — timeout + in-memory/session cache per URL
+// CSV FETCH — single request, in-memory cache per URL
 // ============================================================
 const _csvCache = {};
-const CSV_CACHE_TTL_MS = 5 * 60 * 1000;
-const CSV_FETCH_TIMEOUT_MS = 25000;
-
-function cacheKeyForUrl(url) {
-  try {
-    return 'kg_csv_' + btoa(unescape(encodeURIComponent(url))).replace(/=+$/g, '');
-  } catch (_) {
-    return 'kg_csv_' + url;
-  }
-}
-
-function sheetNameForUrl(url) {
-  const found = Object.entries(TABS).find(([, value]) => value === url);
-  return found ? found[0] : 'sheet';
-}
-
 async function fetchCSV(url) {
-  if (_csvCache[url]) return _csvCache[url]; // already loaded, instant
+  if (_csvCache[url]) return _csvCache[url]; // instant on repeat calls — no re-fetch
 
-  const cacheKey = cacheKeyForUrl(url);
+  let res;
   try {
-    const cached = sessionStorage.getItem(cacheKey);
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      if (parsed && Array.isArray(parsed.data) && Date.now() - parsed.time < CSV_CACHE_TTL_MS) {
-        _csvCache[url] = parsed.data;
-        return parsed.data;
-      }
-    }
-  } catch (_) {}
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), CSV_FETCH_TIMEOUT_MS);
-
-  try {
-    // Cache-buster kecil supaya GitHub/browser tidak menahan data lama.
-    const sep = url.includes('?') ? '&' : '?';
-    const res = await fetch(url + sep + '_ts=' + Date.now(), {
-      signal: controller.signal,
-      cache: 'no-store'
-    });
-    if (!res.ok) throw new Error('HTTP ' + res.status + ' pada tab ' + sheetNameForUrl(url));
-
-    const text = await res.text();
-    if (text.slice(0, 200).toLowerCase().includes('<html')) {
-      throw new Error('Tab ' + sheetNameForUrl(url) + ' belum terbaca sebagai CSV. Pastikan Google Sheet sudah Publish to web sebagai Entire document.');
-    }
-
-    const data = parseCSV(text);
-    _csvCache[url] = data;
-    try {
-      sessionStorage.setItem(cacheKey, JSON.stringify({ time: Date.now(), data }));
-    } catch (_) {}
-    return data;
-  } catch (e) {
-    if (e && e.name === 'AbortError') {
-      throw new Error('Timeout mengambil tab ' + sheetNameForUrl(url) + '. Coba refresh, atau cek koneksi/publish Google Sheet.');
-    }
-    throw e;
-  } finally {
-    clearTimeout(timer);
+    res = await fetch(url);
+  } catch(e) {
+    throw new Error('Tidak dapat terhubung ke server. Periksa koneksi internet lalu refresh halaman.');
   }
+
+  if (!res.ok) {
+    // 403 dari pub URL = sheet belum di-publish atau URL salah
+    if (res.status === 403) {
+      throw new Error('Akses ditolak (403). Pastikan Google Sheet sudah di-publish: File → Share → Publish to web.');
+    }
+    throw new Error('Gagal memuat data (HTTP ' + res.status + ').');
+  }
+
+  const text = await res.text();
+  // Pub URLs shouldn't return HTML, but check just in case
+  if (text.trimStart().toLowerCase().startsWith('<!doctype') ||
+      text.trimStart().toLowerCase().startsWith('<html')) {
+    throw new Error('Data tidak valid. Pastikan sheet sudah di-publish ke web.');
+  }
+
+  const data = parseCSV(text);
+  _csvCache[url] = data; // cache — next calls are instant
+  return data;
 }
 
 // ============================================================
 // LOGIN
 // ============================================================
-// Preload hanya Access. Jangan preload Database di halaman login karena tab Database
-// biasanya paling besar dan bikin tombol login terasa lama.
-let _accessPromise = null;
-window.addEventListener('load', () => {
+// Preload access DAN database di background begitu halaman terbuka
+// Simpan sebagai Promise — kalau login diklik sebelum selesai, tinggal await Promise yang sama
+let _preloadPromise = null;
+let _accessPromise  = null;
+let _dbPromise      = null;
+
+let _preloadError = null; // stores error from preload if any
+
+function startPreload() {
+  if (_accessPromise) return;
+  // Access tab is small — login only needs this to complete
   _accessPromise = fetchCSV(TABS.access)
     .then(data => { accessData = data; return data; })
-    .catch(err => { console.warn('Preload Access gagal:', err); return null; });
+    .catch(e => { _preloadError = e; return []; }); // store error, return empty
+  // Database tab is large — loads in parallel in background
+  _dbPromise = fetchCSV(TABS.database)
+    .then(data => { dbData = data; return data; })
+    .catch(e => { if (!_preloadError) _preloadError = e; return []; });
+  _preloadPromise = Promise.all([_accessPromise, _dbPromise]);
+}
+
+// Start immediately when script loads — not waiting for 'load' event
+startPreload();
+
+// Update status indicator once DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  const el = document.getElementById('preload-status');
+  if (!el) return;
+  el.textContent = 'Memuat data...';
+  if (_accessPromise) _accessPromise.then(data => {
+    if (data && data.length > 0) {
+      el.textContent = 'Data akses siap ✔';
+      el.style.color = '#64b5f6';
+    }
+  }).catch(() => {});
+  if (_dbPromise) _dbPromise.then(data => {
+    if (data && data.length > 0) {
+      el.textContent = 'Data siap ✔  Silakan masukkan NIK';
+      el.style.color = '#4ade80';
+    } else if (_preloadError) {
+      el.textContent = '⚠ Gagal memuat data. Pastikan Google Sheet sudah di-publish.';
+      el.style.color = '#f87171';
+    }
+  }).catch(() => {
+    el.textContent = '⚠ Gagal memuat data. Refresh halaman dan coba lagi.';
+    el.style.color = '#f87171';
+  });
 });
 
 async function doLogin() {
@@ -999,10 +1000,15 @@ async function doLogin() {
   hideLoginError();
 
   try {
-    // Tunggu preload Access selesai kalau masih berjalan — tidak ada fetch ganda.
+    // Tunggu Access selesai (sudah loading sejak halaman dibuka)
     if (_accessPromise) await _accessPromise;
 
-    // Fallback kalau preload Access gagal.
+    // Jika preload gagal, langsung tampilkan error yang informatif
+    if (_preloadError && accessData.length === 0) {
+      throw _preloadError;
+    }
+
+    // Jika data kosong tapi tidak ada error, coba fetch ulang sekali
     if (accessData.length === 0) accessData = await fetchCSV(TABS.access);
 
     // Cari NIK di tab access (HR/Admin)
@@ -1019,7 +1025,10 @@ async function doLogin() {
       layer = getAccessLayer(user);
       found = true;
     } else {
-      // Kalau NIK tidak ada di Access, baru cek Database
+      // Bukan HR/Admin — tunggu DB yang sudah loading di background
+      if (_dbPromise) await _dbPromise;
+      // Jika DB gagal load, tampilkan error
+      if (_preloadError && dbData.length === 0) throw _preloadError;
       if (dbData.length === 0) dbData = await fetchCSV(TABS.database);
       const dbUser = dbData.find(r => {
         const dbNIK = normalizeNIK(r['NIK'] || r['nik'] || '');
@@ -1148,42 +1157,19 @@ async function loadMyLearning() {
   }
 }
 
-// Helper: safely parse numbers, treating #N/A, blank, errors as 0
-function safeNum(val) {
-  if (!val || val === '' || typeof val === 'string' && val.trim().startsWith('#')) return 0;
-  const n = parseFloat(val);
-  return isNaN(n) ? 0 : n;
-}
-
-// Helper: find a column value by trying multiple key variants (handles extra spaces)
-function getCol(row, ...keys) {
-  // First try exact match
-  for (const k of keys) {
-    if (row[k] !== undefined && row[k] !== '') return row[k];
-  }
-  // Then try case-insensitive + trim match against all actual keys
-  const rowKeys = Object.keys(row);
-  for (const k of keys) {
-    const kNorm = k.toLowerCase().replace(/\s+/g, ' ').trim();
-    const found = rowKeys.find(rk => rk.toLowerCase().replace(/\s+/g, ' ').trim() === kNorm);
-    if (found !== undefined && row[found] !== '') return row[found];
-  }
-  return '';
-}
-
 function buildEmployeeCard(emp) {
-  const name        = getCol(emp, 'NAMA', 'nama', 'Name') || '-';
-  const nik         = getCol(emp, 'NIK', 'nik') || '-';
-  const status      = getCol(emp, 'Status', 'STATUS') || '-';
-  const position    = getCol(emp, 'Position', 'POSITION', 'Posisi') || '-';
-  const unit        = getCol(emp, 'Unit', 'UNIT') || '-';
-  const directorate = getCol(emp, 'Directorate', 'DIRECTORATE', 'Direktorat') || '-';
+  const name        = emp['NAMA'] || emp['nama'] || '-';
+  const nik         = emp['NIK']  || emp['nik']  || '-';
+  const status      = emp['Status'] || '-';
+  const position    = emp['Position'] || '-';
+  const unit        = emp['Unit'] || '-';
+  const directorate = emp['Directorate'] || '-';
 
-  const allHours  = safeNum(getCol(emp, 'All Hours', 'ALL HOURS'));
-  const learningH = safeNum(getCol(emp, 'Learning Hours', 'LEARNING HOURS'));
-  const m1        = safeNum(getCol(emp, 'First Mandatory', 'FIRST MANDATORY'));
-  const m2        = safeNum(getCol(emp, 'Second Mandatory', 'SECOND MANDATORY'));
-  const m3        = safeNum(getCol(emp, 'Third Mandatory', 'THIRD MANDATORY'));
+  const allHours  = parseFloat(emp['All Hours']) || 0;
+  const learningH = parseFloat(emp['Learning Hours']) || 0;
+  const m1        = parseFloat(emp['First Mandatory']) || 0;
+  const m2        = parseFloat(emp['Second Mandatory']) || 0;
+  const m3        = parseFloat(emp['Third Mandatory']) || 0;
   const target    = 18;
   const progPct   = Math.min(100, Math.round((learningH / target) * 100));
   const progClass = learningH >= target ? 'prog-complete' : learningH > 0 ? 'prog-progress' : 'prog-inactive';
@@ -1201,9 +1187,8 @@ function buildEmployeeCard(emp) {
 
   let topicsHTML = '';
   topics.forEach(({ key, emoji }) => {
-    // getCol handles extra spaces in column names like "AI General  (jam)"
-    const hrs   = safeNum(getCol(emp, key + ' (jam)', key + '  (jam)', key));
-    const kelas = Math.round(safeNum(getCol(emp, key + ' (kelas)', key + '  (kelas)')));
+    const hrs   = parseFloat(emp[key + ' (jam)'])   || 0;
+    const kelas = parseInt(emp[key + ' (kelas)'])   || 0;
     topicsHTML += `
       <div class="topic-pill">
         <div>
@@ -1338,36 +1323,33 @@ async function loadDashboard() {
 }
 
 function renderDashboard(el) {
-  // Filter baris valid saja (skip header duplikat atau baris kosong)
+  // Hanya hitung baris dengan NIK valid
   const validData = dbData.filter(r => {
     const nik = (r['NIK'] || r['No NIK'] || '').toString().trim();
     return nik !== '' && nik.toLowerCase() !== 'nik' && nik.toLowerCase() !== 'no nik';
   });
 
   const totalEmp   = validData.length;
-  const noActivity = validData.filter(r => safeNum(getCol(r, 'Learning Hours')) === 0).length;
-  const completed  = validData.filter(r => safeNum(getCol(r, 'Learning Hours')) >= 18).length;
-  const inProgress = validData.filter(r => { const lh = safeNum(getCol(r, 'Learning Hours')); return lh > 0 && lh < 18; }).length;
-  const totalHours = validData.reduce((s,r) => s + safeNum(getCol(r, 'Learning Hours')), 0);
+  // noActivity = Learning Hours 0 (sesuai Recap tab)
+  const noActivity = validData.filter(r => (parseFloat(r['Learning Hours']||0)||0) === 0).length;
+  const completed  = validData.filter(r => (parseFloat(r['Learning Hours']||0)||0) >= 18).length;
+  const inProgress = validData.filter(r => { const lh=parseFloat(r['Learning Hours']||0)||0; return lh>0&&lh<18; }).length;
+  const totalHours = validData.reduce((s,r) => s + (parseFloat(r['Learning Hours']||0)||0), 0);
 
-  // Mandatory dihitung dari 6 topik aktual (kolom jam per topik)
-  // Coba format "Topik (jam)" dulu, fallback ke "Topik"
+  // Mandatory: hitung dari 6 topik aktual, bukan kolom First/Second/Third Mandatory
   const MAND_TOPICS = ['Sustainability','Video Production','AI General','AI for Newsroom','AI Media Intelligence','Creative Thinking'];
-  const getTopicHours = (r, t) => safeNum(getCol(r, t + ' (jam)', t + '  (jam)', t));
-  const countMand = r => MAND_TOPICS.filter(t => getTopicHours(r, t) > 0).length;
-
+  const countMand = r => MAND_TOPICS.filter(t => (parseFloat(r[t]||0)||0) > 0).length;
   const mand3plus = validData.filter(r => countMand(r) >= 3).length;
   const mand2     = validData.filter(r => countMand(r) === 2).length;
   const mand1     = validData.filter(r => countMand(r) === 1).length;
   const mand0     = validData.filter(r => countMand(r) === 0).length;
 
-  // Per-unit summary
   const units = {};
   validData.forEach(r => {
-    const unit = getCol(r, 'Unit', 'UNIT') || 'Lainnya';
+    const unit = r['Unit']||r['UNIT']||'Lainnya';
     if (!units[unit]) units[unit] = { total:0, noAct:0, inProg:0, comp:0, mand0:0, mand1:0, mand2:0, mand3p:0 };
     units[unit].total++;
-    const lh = safeNum(getCol(r, 'Learning Hours'));
+    const lh = parseFloat(r['Learning Hours']||0)||0;
     if (lh === 0) units[unit].noAct++;
     else if (lh >= 18) units[unit].comp++;
     else units[unit].inProg++;
@@ -1413,17 +1395,17 @@ function renderDashboard(el) {
       <div class="stat-card stat-blue">
         <div class="stat-label">Total Karyawan</div>
         <div class="stat-value">${totalEmp.toLocaleString('id-ID')}</div>
-        <div class="stat-detail">data aktif di database</div>
+        <div class="stat-detail">per 31 Maret 2026</div>
       </div>
       <div class="stat-card stat-green">
-        <div class="stat-label">Selesai ≥18 Jam</div>
+        <div class="stat-label">Selesai 18 Jam</div>
         <div class="stat-value">${completed.toLocaleString('id-ID')}</div>
         <div class="stat-detail">${compPct}% dari total</div>
       </div>
       <div class="stat-card stat-amber">
         <div class="stat-label">Sedang Berjalan</div>
         <div class="stat-value">${inProgress.toLocaleString('id-ID')}</div>
-        <div class="stat-detail">&lt; 18 jam, sudah ada aktivitas</div>
+        <div class="stat-detail">< 18 jam learning</div>
       </div>
       <div class="stat-card stat-red">
         <div class="stat-label">Belum Ada Aktivitas</div>
@@ -1431,7 +1413,7 @@ function renderDashboard(el) {
         <div class="stat-detail">${(totalEmp>0?((noActivity/totalEmp)*100).toFixed(1):0)}% dari total</div>
       </div>
       <div class="stat-card stat-cyan">
-        <div class="stat-label">≥3 Mandatory Topics</div>
+        <div class="stat-label">&#8805;3 Mandatory Topics</div>
         <div class="stat-value">${mand3plus.toLocaleString('id-ID')}</div>
         <div class="stat-detail">${mandPct}% dari total</div>
       </div>
@@ -1441,14 +1423,14 @@ function renderDashboard(el) {
         <div class="stat-detail">${(totalEmp>0?((mand2/totalEmp)*100).toFixed(1):0)}% dari total</div>
       </div>
       <div class="stat-card stat-red">
-        <div class="stat-label">0–1 Mandatory Topics</div>
+        <div class="stat-label">0-1 Mandatory Topics</div>
         <div class="stat-value">${(mand0+mand1).toLocaleString('id-ID')}</div>
         <div class="stat-detail">${(totalEmp>0?(((mand0+mand1)/totalEmp)*100).toFixed(1):0)}% dari total</div>
       </div>
       <div class="stat-card stat-blue">
         <div class="stat-label">Total Jam Belajar</div>
         <div class="stat-value">${totalHours.toFixed(0)}</div>
-        <div class="stat-detail">jam learning hours</div>
+        <div class="stat-detail">jam keseluruhan</div>
       </div>
     </div>
 
@@ -1464,7 +1446,7 @@ function renderDashboard(el) {
               <th style="text-align:center;">%</th>
               <th style="text-align:center;">In Progress</th>
               <th style="text-align:center;">%</th>
-              <th style="text-align:center;">Selesai ≥18 Jam</th>
+              <th style="text-align:center;">Selesai 18 Jam</th>
               <th style="text-align:center;">%</th>
             </tr>
           </thead>
@@ -1481,7 +1463,7 @@ function renderDashboard(el) {
             <tr>
               <th>Unit</th>
               <th style="text-align:center;">Jml Karyawan</th>
-              <th style="text-align:center;">0 Mandatory</th>
+              <th style="text-align:center;">Belum Mandatory</th>
               <th style="text-align:center;">%</th>
               <th style="text-align:center;">1 Mandatory</th>
               <th style="text-align:center;">2 Mandatory</th>
