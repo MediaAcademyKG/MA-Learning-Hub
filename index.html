@@ -1149,10 +1149,10 @@ async function loadMyLearning() {
   const el = document.getElementById('my-learning-content');
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div class="loading-text">Memuat data learning...</div></div>';
   try {
-    // Hanya fetch Search Bar (ringan) — Learning Participation dimuat on-demand
-    const sbRows = await fetchSearchBar(normalizeNIK(currentUser.nik));
     const nik = normalizeNIK(currentUser.nik).toLowerCase();
-    const sbRow = sbRow_direct;
+    // Fetch Search Bar data untuk NIK ini via Apps Script
+    const sbRows = await api('searchbar', { nik });
+    const sbRow = Array.isArray(sbRows) ? sbRows[0] : sbRows;
 
     if (!sbRow) {
       el.innerHTML = '<div class="empty-state"><div class="empty-icon">😕</div><div class="empty-text">Data learning untuk NIK ini belum tersedia.</div></div>';
@@ -1436,13 +1436,16 @@ async function hrSearch() {
 
   try {
     // Only fetch Search Bar (light) — participation loaded on-demand
-    const [sbRow_direct, accRows] = await Promise.all([
+    const [sbRawRows, accRows] = await Promise.all([
       api('searchbar', { nik }),
       accessData.length > 0 ? Promise.resolve(accessData) : fetchAccess(),
     ]);
     if (accessData.length === 0) accessData = accRows;
 
-    const sbRow = sbRows.find(r => normalizeNIK(r['NIK']||r['nik']||'').toLowerCase() === nik);
+    // api('searchbar') may return array or single object
+    const sbAllRows = Array.isArray(sbRawRows) ? sbRawRows : (sbRawRows ? [sbRawRows] : []);
+    const sbRow = sbAllRows.find(r => normalizeNIK(r['NIK']||r['nik']||'').toLowerCase() === nik)
+                  || sbAllRows[0] || null;
 
     // Layer check for Employee role
     if (!(currentUser.role === 'HR' || currentUser.role === 'Admin')) {
