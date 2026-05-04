@@ -726,14 +726,20 @@
 // CONFIG - GOOGLE SHEET
 // ============================================================
 // &single=true mencegah 307 redirect dari Google — ini kunci kecepatan
-// Published-to-web CSV URLs — direct CDN delivery, no gviz rendering overhead
-// Significantly faster than gviz/tq (1-2s vs 15-25s cold start)
+// URL Strategy: pub URL (fast) with automatic fallback to gviz/tq (reliable)
+// pub URLs return 400/500 if that specific tab hasn't been published individually
+// gviz/tq works with "Anyone with link can view" — always reliable
+const PUB_BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAnkC8gLRwI8QsiKzbaaQV_w577RvjKKMRfQAw96ZCt0cNBfiIuCtqtm4fxzH8h5-X_0/pub';
+const SHEET_ID = '11T58NlMVg2NAiygt3IDl0nR-UZJoWZBLbui1TFZmpFE';
+
+// Primary: published CSV (fast, CDN-served)
+// Fallback: gviz/tq (slower but always works)
 const TABS = {
-  access:        'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAnkC8gLRwI8QsiKzbaaQV_w577RvjKKMRfQAw96ZCt0cNBfiIuCtqtm4fxzH8h5-X_0/pub?gid=185308502&single=true&output=csv',
-  database:      'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAnkC8gLRwI8QsiKzbaaQV_w577RvjKKMRfQAw96ZCt0cNBfiIuCtqtm4fxzH8h5-X_0/pub?gid=257024260&single=true&output=csv',
-  participation: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAnkC8gLRwI8QsiKzbaaQV_w577RvjKKMRfQAw96ZCt0cNBfiIuCtqtm4fxzH8h5-X_0/pub?gid=0&single=true&output=csv',
-  recap:         'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAnkC8gLRwI8QsiKzbaaQV_w577RvjKKMRfQAw96ZCt0cNBfiIuCtqtm4fxzH8h5-X_0/pub?gid=550872410&single=true&output=csv',
-  searchbar:     'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAnkC8gLRwI8QsiKzbaaQV_w577RvjKKMRfQAw96ZCt0cNBfiIuCtqtm4fxzH8h5-X_0/pub?gid=904954376&single=true&output=csv',
+  access:        { pub: PUB_BASE + '?gid=185308502&single=true&output=csv',  gviz: 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=Access' },
+  database:      { pub: PUB_BASE + '?gid=257024260&single=true&output=csv',  gviz: 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=Database' },
+  participation: { pub: PUB_BASE + '?gid=0&single=true&output=csv',          gviz: 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=Learning%20Participation' },
+  recap:         { pub: PUB_BASE + '?gid=550872410&single=true&output=csv',  gviz: 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=Recap' },
+  searchbar:     { pub: PUB_BASE + '?gid=904954376&single=true&output=csv',  gviz: 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=Search%20Bar' },
 };
 
 // NIK normalization: strip leading zeros untuk NIK angka murni
@@ -908,34 +914,45 @@ function shortUrl(url) {
 // CSV FETCH — single request, in-memory cache per URL
 // ============================================================
 const _csvCache = {};
-async function fetchCSV(url) {
-  if (_csvCache[url]) return _csvCache[url]; // instant on repeat calls — no re-fetch
+async function fetchCSV(tabOrUrl) {
+  // Accept both plain URL strings and {pub, gviz} objects
+  const cacheKey = (typeof tabOrUrl === 'string') ? tabOrUrl : tabOrUrl.pub;
+  if (_csvCache[cacheKey]) return _csvCache[cacheKey]; // instant cache hit
 
-  let res;
-  try {
-    res = await fetch(url);
-  } catch(e) {
-    throw new Error('Tidak dapat terhubung ke server. Periksa koneksi internet lalu refresh halaman.');
-  }
+  // Try pub URL first (fast), fallback to gviz/tq (reliable)
+  const urls = (typeof tabOrUrl === 'string')
+    ? [tabOrUrl]
+    : [tabOrUrl.pub, tabOrUrl.gviz];
 
-  if (!res.ok) {
-    // 403 dari pub URL = sheet belum di-publish atau URL salah
-    if (res.status === 403) {
-      throw new Error('Akses ditolak (403). Pastikan Google Sheet sudah di-publish: File → Share → Publish to web.');
+  let lastErr = null;
+  for (const url of urls) {
+    try {
+      const res = await fetch(url);
+
+      // 4xx/5xx on pub URL = tab not individually published → try gviz fallback
+      if (!res.ok) {
+        lastErr = new Error('Gagal memuat data (HTTP ' + res.status + ').');
+        continue; // try next URL
+      }
+
+      const text = await res.text();
+      if (text.trimStart().toLowerCase().startsWith('<!doctype') ||
+          text.trimStart().toLowerCase().startsWith('<html')) {
+        lastErr = new Error('Data tidak valid — sheet mungkin belum di-publish.');
+        continue;
+      }
+
+      const data = parseCSV(text);
+      _csvCache[cacheKey] = data; // cache result
+      if (url === tabOrUrl.gviz) console.info('fetchCSV: used gviz fallback for', cacheKey);
+      return data;
+
+    } catch(e) {
+      lastErr = new Error('Tidak dapat terhubung. Periksa koneksi internet lalu refresh halaman.');
     }
-    throw new Error('Gagal memuat data (HTTP ' + res.status + ').');
   }
 
-  const text = await res.text();
-  // Pub URLs shouldn't return HTML, but check just in case
-  if (text.trimStart().toLowerCase().startsWith('<!doctype') ||
-      text.trimStart().toLowerCase().startsWith('<html')) {
-    throw new Error('Data tidak valid. Pastikan sheet sudah di-publish ke web.');
-  }
-
-  const data = parseCSV(text);
-  _csvCache[url] = data; // cache — next calls are instant
-  return data;
+  throw lastErr || new Error('Gagal memuat data dari Google Sheet.');
 }
 
 // ============================================================
