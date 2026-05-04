@@ -730,17 +730,23 @@
 // pub URLs return 400/500 if that specific tab hasn't been published individually
 // gviz/tq works with "Anyone with link can view" — always reliable
 const PUB_BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAnkC8gLRwI8QsiKzbaaQV_w577RvjKKMRfQAw96ZCt0cNBfiIuCtqtm4fxzH8h5-X_0/pub';
-const SHEET_ID = '11T58NlMVg2NAiygt3IDl0nR-UZJoWZBLbui1TFZmpFE';
+// ============================================================
+// CONFIG — Apps Script Web App
+// Setelah deploy Apps Script, ganti URL di bawah ini
+// ============================================================
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby-ol6Fvbmp8SoBHlvE8htyq6sCijEsw6mppojQzvt3k5G1unN8cVe-V4NjLthaMqw/exec';
 
-// Hanya pakai gviz — pub URL dengan single=true selalu 307 redirect (blocked by CORS)
-// gviz/tq adalah satu-satunya endpoint yang support CORS untuk browser fetch
-const TABS = {
-  access:        { pub: null, gviz: 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=Access' },
-  database:      { pub: null, gviz: 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=Database' },
-  participation: { pub: null, gviz: 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=Learning%20Participation' },
-  recap:         { pub: null, gviz: 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=Recap' },
-  searchbar:     { pub: null, gviz: 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=Search%20Bar' },
-};
+// Fetch dari Apps Script — lebih cepat dari gviz/tq karena tidak terpengaruh formula
+async function api(action, extraParams) {
+  const url = new URL(APPS_SCRIPT_URL);
+  url.searchParams.set('action', action);
+  if (extraParams) Object.entries(extraParams).forEach(([k,v]) => url.searchParams.set(k, v));
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error || 'Server error');
+  return json.data;
+}
 
 // NIK normalization: strip leading zeros untuk NIK angka murni
 // "012345" → "12345", "KG001" → "KG001"
@@ -948,42 +954,36 @@ async function fetchCSV(tabOrUrl) {
 // Preload access DAN database di background begitu halaman terbuka
 // Simpan sebagai Promise — kalau login diklik sebelum selesai, tinggal await Promise yang sama
 let _preloadPromise = null;
-let _accessPromise  = null;
-let _dbPromise      = null;
-
-let _preloadError = null; // stores error from preload if any
 
 function startPreload() {
-  if (_accessPromise) return;
-  // Access tab saja yang di-preload — dibutuhkan untuk login
-  // Tab lain (Database, Search Bar, dll) di-fetch on-demand saat tab diklik
-  _accessPromise = fetchCSV(TABS.access)
-    .then(data => { accessData = data; return data; })
-    .catch(e => { _preloadError = e; return []; });
-  _preloadPromise = _accessPromise;
+  if (_preloadPromise) return;
+  _preloadPromise = fetchAccess()
+    .then(data => { accessData = data; })
+    .catch(() => {});
 }
 
-// Start immediately when script loads — not waiting for 'load' event
+// Start preload immediately
 startPreload();
 
-// Update status indicator once DOM is ready
+// Update status indicator
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('preload-status');
   if (!el) return;
   el.textContent = 'Memuat data...';
-  if (_accessPromise) _accessPromise.then(data => {
-    if (data && data.length > 0) {
+  if (_preloadPromise) _preloadPromise.then(() => {
+    if (accessData && accessData.length > 0) {
       el.textContent = 'Siap ✔  Silakan masukkan NIK';
       el.style.color = '#4ade80';
-    } else if (_preloadError) {
-      el.textContent = '⚠ Gagal memuat data. Pastikan Google Sheet sudah di-publish.';
+    } else {
+      el.textContent = '⚠ Gagal memuat. Refresh halaman.';
       el.style.color = '#f87171';
     }
   }).catch(() => {
-    el.textContent = '⚠ Gagal memuat data. Refresh halaman dan coba lagi.';
+    el.textContent = '⚠ Gagal memuat. Refresh halaman.';
     el.style.color = '#f87171';
   });
 });
+
 
 async function doLogin() {
   const rawNik = document.getElementById('nik-input').value.trim();
@@ -999,7 +999,7 @@ async function doLogin() {
     if (_accessPromise) await _accessPromise;
 
     if (_preloadError && accessData.length === 0) throw _preloadError;
-    if (accessData.length === 0) accessData = await fetchCSV(TABS.access);
+    if (accessData.length === 0) accessData = await fetchAccess();
 
     // Cari NIK di tab Access (HR/Admin/Employee dengan layer)
     const user = accessData.find(r => {
@@ -1015,9 +1015,8 @@ async function doLogin() {
       layer = getAccessLayer(user);
       found = true;
     } else {
-      // Tidak ada di Access tab — cek di Search Bar (lebih ringan dari Database)
-      const sbRows = await fetchCSV(TABS.searchbar);
-      const sbUser = sbRows.find(r => normalizeNIK(r['NIK']||r['nik']||'').toLowerCase() === nik.toLowerCase());
+      // Tidak ada di Access tab — cek di Search Bar per NIK (ringan, hanya 1 baris)
+      const sbUser = await api('searchbar', { nik });
       if (sbUser) {
         name  = sbUser['Name'] || sbUser['NAMA'] || sbUser['nama'] || rawNik;
         found = true;
@@ -1134,9 +1133,9 @@ async function loadMyLearning() {
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div class="loading-text">Memuat data learning...</div></div>';
   try {
     // Hanya fetch Search Bar (ringan) — Learning Participation dimuat on-demand
-    const sbRows = await fetchCSV(TABS.searchbar);
+    const sbRows = await fetchSearchBar(normalizeNIK(currentUser.nik));
     const nik = normalizeNIK(currentUser.nik).toLowerCase();
-    const sbRow = sbRows.find(r => normalizeNIK(r['NIK']||r['nik']||'').toLowerCase() === nik);
+    const sbRow = sbRow_direct;
 
     if (!sbRow) {
       el.innerHTML = '<div class="empty-state"><div class="empty-icon">😕</div><div class="empty-text">Data learning untuk NIK ini belum tersedia.</div></div>';
@@ -1153,8 +1152,7 @@ async function loadMyLearning() {
         detailBtn.disabled = true;
         detailBtn.textContent = 'Memuat...';
         try {
-          const partRows = await fetchCSV(TABS.participation);
-          const myClasses = partRows.filter(r => normalizeNIK(r['NIK']||r['nik']||'').toLowerCase() === nik);
+          const myClasses = await api('participation', { nik });
           const classSection = document.getElementById('class-detail-section');
           if (classSection) classSection.innerHTML = buildClassTable(myClasses);
         } catch(e) {
@@ -1421,9 +1419,9 @@ async function hrSearch() {
 
   try {
     // Only fetch Search Bar (light) — participation loaded on-demand
-    const [sbRows, accRows] = await Promise.all([
-      fetchCSV(TABS.searchbar),
-      accessData.length > 0 ? Promise.resolve(accessData) : fetchCSV(TABS.access),
+    const [sbRow_direct, accRows] = await Promise.all([
+      api('searchbar', { nik }),
+      accessData.length > 0 ? Promise.resolve(accessData) : fetchAccess(),
     ]);
     if (accessData.length === 0) accessData = accRows;
 
@@ -1453,8 +1451,7 @@ async function hrSearch() {
         detailBtn.disabled = true;
         detailBtn.textContent = 'Memuat...';
         try {
-          const partRows  = await fetchCSV(TABS.participation);
-          const myClasses = partRows.filter(r => normalizeNIK(r['NIK']||r['nik']||'').toLowerCase() === nik);
+          const myClasses = await api('participation', { nik });
           const classSection = document.getElementById('class-detail-section');
           if (classSection) classSection.innerHTML = buildClassTable(myClasses);
         } catch(e) {
@@ -1483,7 +1480,7 @@ async function loadDashboard() {
   const el = document.getElementById('dashboard-content');
   try {
     // Dashboard dihitung langsung dari tab Database. Recap tidak wajib dibaca.
-    if (dbData.length === 0) dbData = await fetchCSV(TABS.database);
+    if (dbData.length === 0) dbData = await api("database_full");
     renderDashboard(el);
   } catch(e) {
     el.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Gagal memuat dashboard: ' + e.message + '</div></div>';
@@ -1657,7 +1654,7 @@ function pct(val, total) {
 async function loadParticipation() {
   const el = document.getElementById('participation-content');
   try {
-    if (partData.length === 0) partData = await fetchCSV(TABS.participation);
+    if (partData.length === 0) partData = await api("participation_full");
     filteredPartData = [...partData];
     document.getElementById('part-count').textContent = 'Menampilkan ' + partData.length + ' data';
     renderParticipationTable();
@@ -1721,7 +1718,7 @@ let accessDisplayData = [];
 function loadAccessManagement() {
   const el = document.getElementById('access-table-content');
   if (accessData.length === 0) {
-    fetchCSV(TABS.access).then(data => {
+    fetchAccess().then(data => {
       accessData = data;
       accessDisplayData = accessData.filter(r => {
         const role = (r['role']||r['Role']||r['ROLE']||'').trim();
