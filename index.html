@@ -732,14 +732,14 @@
 const PUB_BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAnkC8gLRwI8QsiKzbaaQV_w577RvjKKMRfQAw96ZCt0cNBfiIuCtqtm4fxzH8h5-X_0/pub';
 const SHEET_ID = '11T58NlMVg2NAiygt3IDl0nR-UZJoWZBLbui1TFZmpFE';
 
-// Primary: published CSV (fast, CDN-served)
-// Fallback: gviz/tq (slower but always works)
+// Hanya pakai gviz — pub URL dengan single=true selalu 307 redirect (blocked by CORS)
+// gviz/tq adalah satu-satunya endpoint yang support CORS untuk browser fetch
 const TABS = {
-  access:        { pub: PUB_BASE + '?gid=185308502&single=true&output=csv',  gviz: 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=Access' },
-  database:      { pub: PUB_BASE + '?gid=257024260&single=true&output=csv',  gviz: 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=Database' },
-  participation: { pub: PUB_BASE + '?gid=0&single=true&output=csv',          gviz: 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=Learning%20Participation' },
-  recap:         { pub: PUB_BASE + '?gid=550872410&single=true&output=csv',  gviz: 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=Recap' },
-  searchbar:     { pub: PUB_BASE + '?gid=904954376&single=true&output=csv',  gviz: 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=Search%20Bar' },
+  access:        { pub: null, gviz: 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=Access' },
+  database:      { pub: null, gviz: 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=Database' },
+  participation: { pub: null, gviz: 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=Learning%20Participation' },
+  recap:         { pub: null, gviz: 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=Recap' },
+  searchbar:     { pub: null, gviz: 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:csv&sheet=Search%20Bar' },
 };
 
 // NIK normalization: strip leading zeros untuk NIK angka murni
@@ -911,48 +911,35 @@ function shortUrl(url) {
 }
 
 // ============================================================
-// CSV FETCH — single request, in-memory cache per URL
+// CSV FETCH — langsung gviz, skip pub URL (307 redirect blocked by CORS)
 // ============================================================
 const _csvCache = {};
 async function fetchCSV(tabOrUrl) {
   // Accept both plain URL strings and {pub, gviz} objects
-  const cacheKey = (typeof tabOrUrl === 'string') ? tabOrUrl : tabOrUrl.pub;
-  if (_csvCache[cacheKey]) return _csvCache[cacheKey]; // instant cache hit
+  const url      = (typeof tabOrUrl === 'string') ? tabOrUrl : tabOrUrl.gviz;
+  const cacheKey = url;
+  if (_csvCache[cacheKey]) return _csvCache[cacheKey];
 
-  // Try pub URL first (fast), fallback to gviz/tq (reliable)
-  const urls = (typeof tabOrUrl === 'string')
-    ? [tabOrUrl]
-    : [tabOrUrl.pub, tabOrUrl.gviz];
-
-  let lastErr = null;
-  for (const url of urls) {
-    try {
-      const res = await fetch(url);
-
-      // 4xx/5xx on pub URL = tab not individually published → try gviz fallback
-      if (!res.ok) {
-        lastErr = new Error('Gagal memuat data (HTTP ' + res.status + ').');
-        continue; // try next URL
-      }
-
-      const text = await res.text();
-      if (text.trimStart().toLowerCase().startsWith('<!doctype') ||
-          text.trimStart().toLowerCase().startsWith('<html')) {
-        lastErr = new Error('Data tidak valid — sheet mungkin belum di-publish.');
-        continue;
-      }
-
-      const data = parseCSV(text);
-      _csvCache[cacheKey] = data; // cache result
-      if (url === tabOrUrl.gviz) console.info('fetchCSV: used gviz fallback for', cacheKey);
-      return data;
-
-    } catch(e) {
-      lastErr = new Error('Tidak dapat terhubung. Periksa koneksi internet lalu refresh halaman.');
-    }
+  let res;
+  try {
+    res = await fetch(url);
+  } catch(e) {
+    throw new Error('Tidak dapat terhubung. Periksa koneksi internet lalu refresh halaman.');
   }
 
-  throw lastErr || new Error('Gagal memuat data dari Google Sheet.');
+  if (!res.ok) {
+    throw new Error('Gagal memuat data (HTTP ' + res.status + '). Pastikan Google Sheet sudah di-share "Anyone with the link can view".');
+  }
+
+  const text = await res.text();
+  if (text.trimStart().toLowerCase().startsWith('<!doctype') ||
+      text.trimStart().toLowerCase().startsWith('<html')) {
+    throw new Error('Sheet belum bisa diakses publik. Buka Google Sheet → Share → Anyone with the link → Viewer.');
+  }
+
+  const data = parseCSV(text);
+  _csvCache[cacheKey] = data;
+  return data;
 }
 
 // ============================================================
@@ -1174,19 +1161,41 @@ async function loadMyLearning() {
   }
 }
 
-function buildEmployeeCard(emp) {
-  const name        = emp['NAMA'] || emp['nama'] || '-';
-  const nik         = emp['NIK']  || emp['nik']  || '-';
-  const status      = emp['Status'] || '-';
-  const position    = emp['Position'] || '-';
-  const unit        = emp['Unit'] || '-';
-  const directorate = emp['Directorate'] || '-';
+// Helper: safely parse numbers, treating #N/A, blank, errors as 0
+function safeNum(val) {
+  if (!val || val === '') return 0;
+  if (typeof val === 'string' && val.trim().startsWith('#')) return 0;
+  const n = parseFloat(val);
+  return isNaN(n) ? 0 : n;
+}
 
-  const allHours  = parseFloat(emp['All Hours']) || 0;
-  const learningH = parseFloat(emp['Learning Hours']) || 0;
-  const m1        = parseFloat(emp['First Mandatory']) || 0;
-  const m2        = parseFloat(emp['Second Mandatory']) || 0;
-  const m3        = parseFloat(emp['Third Mandatory']) || 0;
+// Helper: find column value with flexible key matching (handles extra spaces)
+function getCol(row, ...keys) {
+  for (const k of keys) {
+    if (row[k] !== undefined && row[k] !== '') return row[k];
+  }
+  const rowKeys = Object.keys(row);
+  for (const k of keys) {
+    const kNorm = k.toLowerCase().replace(/\s+/g, ' ').trim();
+    const found = rowKeys.find(rk => rk.toLowerCase().replace(/\s+/g, ' ').trim() === kNorm);
+    if (found !== undefined && row[found] !== '') return row[found];
+  }
+  return '';
+}
+
+function buildEmployeeCard(emp) {
+  const name        = getCol(emp, 'NAMA', 'nama', 'Name') || '-';
+  const nik         = getCol(emp, 'NIK', 'nik') || '-';
+  const status      = getCol(emp, 'Status', 'STATUS') || '-';
+  const position    = getCol(emp, 'Position', 'POSITION', 'Posisi') || '-';
+  const unit        = getCol(emp, 'Unit', 'UNIT') || '-';
+  const directorate = getCol(emp, 'Directorate', 'DIRECTORATE', 'Direktorat') || '-';
+
+  const allHours  = safeNum(getCol(emp, 'All Hours', 'ALL HOURS'));
+  const learningH = safeNum(getCol(emp, 'Learning Hours', 'LEARNING HOURS'));
+  const m1        = safeNum(getCol(emp, 'First Mandatory', 'FIRST MANDATORY'));
+  const m2        = safeNum(getCol(emp, 'Second Mandatory', 'SECOND MANDATORY'));
+  const m3        = safeNum(getCol(emp, 'Third Mandatory', 'THIRD MANDATORY'));
   const target    = 18;
   const progPct   = Math.min(100, Math.round((learningH / target) * 100));
   const progClass = learningH >= target ? 'prog-complete' : learningH > 0 ? 'prog-progress' : 'prog-inactive';
@@ -1204,8 +1213,9 @@ function buildEmployeeCard(emp) {
 
   let topicsHTML = '';
   topics.forEach(({ key, emoji }) => {
-    const hrs   = parseFloat(emp[key + ' (jam)'])   || 0;
-    const kelas = parseInt(emp[key + ' (kelas)'])   || 0;
+    // getCol handles extra spaces e.g. "AI General  (jam)" vs "AI General (jam)"
+    const hrs   = safeNum(getCol(emp, key + ' (jam)', key + '  (jam)', key));
+    const kelas = Math.round(safeNum(getCol(emp, key + ' (kelas)', key + '  (kelas)')));
     topicsHTML += `
       <div class="topic-pill">
         <div>
@@ -1347,15 +1357,15 @@ function renderDashboard(el) {
   });
 
   const totalEmp   = validData.length;
-  // noActivity = Learning Hours 0 (sesuai Recap tab)
-  const noActivity = validData.filter(r => (parseFloat(r['Learning Hours']||0)||0) === 0).length;
-  const completed  = validData.filter(r => (parseFloat(r['Learning Hours']||0)||0) >= 18).length;
-  const inProgress = validData.filter(r => { const lh=parseFloat(r['Learning Hours']||0)||0; return lh>0&&lh<18; }).length;
-  const totalHours = validData.reduce((s,r) => s + (parseFloat(r['Learning Hours']||0)||0), 0);
+  const noActivity = validData.filter(r => safeNum(getCol(r, 'Learning Hours')) === 0).length;
+  const completed  = validData.filter(r => safeNum(getCol(r, 'Learning Hours')) >= 18).length;
+  const inProgress = validData.filter(r => { const lh = safeNum(getCol(r, 'Learning Hours')); return lh > 0 && lh < 18; }).length;
+  const totalHours = validData.reduce((s,r) => s + safeNum(getCol(r, 'Learning Hours')), 0);
 
-  // Mandatory: hitung dari 6 topik aktual, bukan kolom First/Second/Third Mandatory
+  // Mandatory: hitung dari 6 topik aktual pakai safeNum + getCol (handle spasi & #N/A)
   const MAND_TOPICS = ['Sustainability','Video Production','AI General','AI for Newsroom','AI Media Intelligence','Creative Thinking'];
-  const countMand = r => MAND_TOPICS.filter(t => (parseFloat(r[t]||0)||0) > 0).length;
+  const getTopicH   = (r, t) => safeNum(getCol(r, t + ' (jam)', t + '  (jam)', t));
+  const countMand   = r => MAND_TOPICS.filter(t => getTopicH(r, t) > 0).length;
   const mand3plus = validData.filter(r => countMand(r) >= 3).length;
   const mand2     = validData.filter(r => countMand(r) === 2).length;
   const mand1     = validData.filter(r => countMand(r) === 1).length;
@@ -1363,10 +1373,10 @@ function renderDashboard(el) {
 
   const units = {};
   validData.forEach(r => {
-    const unit = r['Unit']||r['UNIT']||'Lainnya';
+    const unit = getCol(r, 'Unit', 'UNIT') || 'Lainnya';
     if (!units[unit]) units[unit] = { total:0, noAct:0, inProg:0, comp:0, mand0:0, mand1:0, mand2:0, mand3p:0 };
     units[unit].total++;
-    const lh = parseFloat(r['Learning Hours']||0)||0;
+    const lh = safeNum(getCol(r, 'Learning Hours'));
     if (lh === 0) units[unit].noAct++;
     else if (lh >= 18) units[unit].comp++;
     else units[unit].inProg++;
