@@ -1240,19 +1240,51 @@ function buildLearningCard(sb, classes) {
 
   const initials = name.split(' ').slice(0,2).map(w => w[0]||'').join('').toUpperCase();
 
+  // Hitung jumlah kelas per topik dari Learning Participation
+  const classCountByTopic = {};
+  classes.forEach(c => {
+    const t = (c['Learning Topic'] || '').trim().toLowerCase();
+    classCountByTopic[t] = (classCountByTopic[t] || 0) + 1;
+  });
+  const getClassCount = (key) => classCountByTopic[key.toLowerCase()] || 0;
+
+  // Hitung Others dari Learning Participation
+  const mandTopicKeys = topics.map(t => t.key.toLowerCase());
+  const othersClasses = classes.filter(c => {
+    const t = (c['Learning Topic'] || '').trim().toLowerCase();
+    return !mandTopicKeys.includes(t);
+  });
+  const othersHours = othersClasses.reduce((s,c) => s + safeNum(c['Learning Hour']||0), 0);
+  const othersCount = othersClasses.length;
+
   // Topic cards
   let topicsHTML = '';
   topics.forEach(({ key, emoji }) => {
-    const hrs = sb ? safeNum(getCol(sb, key)) : 0;
+    const hrs   = sb ? safeNum(getCol(sb, key)) : 0;
+    const count = getClassCount(key);
     topicsHTML += `
       <div class="topic-pill">
         <div>
           <div class="topic-name">${emoji} ${key}</div>
-          <div class="topic-sessions" style="font-size:0.7rem;color:var(--gray-500);">Mandatory Topic</div>
+          <div class="topic-sessions" style="font-size:0.7rem;color:var(--gray-500);">Mandatory · ${count > 0 ? count + ' kelas' : '0 kelas'}</div>
         </div>
-        <div class="topic-hours" style="color:${hrs>0?'var(--kg-mid)':'var(--gray-300)'};">${hrs > 0 ? hrs.toFixed(1)+' jam' : '-'}</div>
+        <div style="text-align:right;">
+          <div class="topic-hours" style="color:${hrs>0?'var(--kg-mid)':'var(--gray-300)'};">${hrs > 0 ? hrs.toFixed(1)+' jam' : '-'}</div>
+        </div>
       </div>`;
   });
+
+  // Others card
+  topicsHTML += `
+    <div class="topic-pill">
+      <div>
+        <div class="topic-name">📦 Others</div>
+        <div class="topic-sessions" style="font-size:0.7rem;color:var(--gray-500);">Non-Mandatory · ${othersCount} kelas</div>
+      </div>
+      <div style="text-align:right;">
+        <div class="topic-hours" style="color:${othersHours>0?'var(--kg-mid)':'var(--gray-300)'};">${othersHours > 0 ? othersHours.toFixed(1)+' jam' : '-'}</div>
+      </div>
+    </div>`;
 
   // Learning Participation table — semua kelas
   const monthOrder = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
