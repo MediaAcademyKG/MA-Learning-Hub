@@ -995,10 +995,8 @@ async function doLogin() {
   hideLoginError();
 
   try {
-    // Tunggu Access selesai (sudah loading sejak halaman dibuka)
-    if (_accessPromise) await _accessPromise;
-
-    if (_preloadError && accessData.length === 0) throw _preloadError;
+    // Tunggu preload Access selesai (sudah berjalan sejak halaman dibuka)
+    if (_preloadPromise) await _preloadPromise;
     if (accessData.length === 0) accessData = await fetchAccess();
 
     // Cari NIK di tab Access (HR/Admin/Employee dengan layer)
