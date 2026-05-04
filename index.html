@@ -1133,29 +1133,94 @@ async function loadMyLearning() {
   const el = document.getElementById('my-learning-content');
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div class="loading-text">Memuat data learning...</div></div>';
   try {
-    // Load Search Bar + Learning Participation paralel
-    const [sbRows, partRows] = await Promise.all([
-      fetchCSV(TABS.searchbar),
-      fetchCSV(TABS.participation),
-    ]);
-
+    // Hanya fetch Search Bar (ringan) — Learning Participation dimuat on-demand
+    const sbRows = await fetchCSV(TABS.searchbar);
     const nik = normalizeNIK(currentUser.nik).toLowerCase();
-
-    // Search Bar: 1 baris summary per NIK
     const sbRow = sbRows.find(r => normalizeNIK(r['NIK']||r['nik']||'').toLowerCase() === nik);
 
-    // Learning Participation: semua kelas milik NIK ini
-    const myClasses = partRows.filter(r => normalizeNIK(r['NIK']||r['nik']||'').toLowerCase() === nik);
-
-    if (!sbRow && myClasses.length === 0) {
+    if (!sbRow) {
       el.innerHTML = '<div class="empty-state"><div class="empty-icon">😕</div><div class="empty-text">Data learning untuk NIK ini belum tersedia.</div></div>';
       return;
     }
 
-    el.innerHTML = buildLearningCard(sbRow, myClasses);
+    // Tampilkan summary dulu tanpa list kelas
+    el.innerHTML = buildLearningCard(sbRow, []);
+
+    // Pasang tombol "Lihat Riwayat Kelas" yang fetch on-demand
+    const detailBtn = document.getElementById('btn-load-classes');
+    if (detailBtn) {
+      detailBtn.addEventListener('click', async () => {
+        detailBtn.disabled = true;
+        detailBtn.textContent = 'Memuat...';
+        try {
+          const partRows = await fetchCSV(TABS.participation);
+          const myClasses = partRows.filter(r => normalizeNIK(r['NIK']||r['nik']||'').toLowerCase() === nik);
+          const classSection = document.getElementById('class-detail-section');
+          if (classSection) classSection.innerHTML = buildClassTable(myClasses);
+        } catch(e) {
+          detailBtn.textContent = 'Gagal memuat. Coba lagi.';
+          detailBtn.disabled = false;
+        }
+      });
+    }
   } catch(e) {
     el.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Gagal memuat data: ' + e.message + '</div></div>';
   }
+}
+
+// Render tabel kelas dari Learning Participation (dipanggil on-demand)
+function buildClassTable(classes) {
+  const monthOrder = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+  const sorted = [...classes].sort((a,b) => {
+    const ma = monthOrder.indexOf(a['Month']||a['month']||'');
+    const mb = monthOrder.indexOf(b['Month']||b['month']||'');
+    return ma - mb;
+  });
+  const mandTopics = ['sustainability','ai general','ai for newsroom','ai media intelligence','video production','creative thinking'];
+  let totalHrs = 0;
+  let rows = '';
+  sorted.forEach((c, i) => {
+    const prog  = c['Program Name'] || '-';
+    const org   = c['Organizer / Source'] || c['Organizer'] || '-';
+    const type  = c['Learning Type'] || '-';
+    const topic = c['Learning Topic'] || '-';
+    const month = c['Month'] || '-';
+    const hrs   = safeNum(c['Learning Hour'] || 0);
+    totalHrs += hrs;
+    const isMand = mandTopics.includes(topic.toLowerCase());
+    rows += `<tr>
+      <td style="text-align:center;color:var(--gray-400);font-size:0.75rem;">${i+1}</td>
+      <td><strong>${prog}</strong></td>
+      <td>${org}</td>
+      <td>${type}</td>
+      <td><span class="chip ${isMand?'chip-blue':'chip-gray'}">${topic}</span></td>
+      <td style="text-align:center;">${month}</td>
+      <td style="text-align:center;font-weight:700;color:var(--kg-mid);">${hrs > 0 ? hrs.toFixed(1) : '-'}</td>
+    </tr>`;
+  });
+  if (classes.length === 0) return '<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">Belum ada data kelas yang tercatat.</div></div>';
+  return `
+    <div class="section-divider">Riwayat Kelas (${classes.length} kelas · ${totalHrs.toFixed(1)} jam)</div>
+    <div class="card" style="padding:0;">
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th style="text-align:center;">#</th>
+            <th>Program / Nama Kelas</th>
+            <th>Organizer / Sumber</th>
+            <th>Tipe</th>
+            <th>Topik</th>
+            <th style="text-align:center;">Bulan</th>
+            <th style="text-align:center;">Jam</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+          <tfoot><tr class="tfoot-row">
+            <td colspan="6" style="text-align:right;padding-right:16px;">Total</td>
+            <td style="text-align:center;">${totalHrs.toFixed(1)} jam</td>
+          </tr></tfoot>
+        </table>
+      </div>
+    </div>`;
 }
 
 // ============================================================
@@ -1221,22 +1286,10 @@ function buildLearningCard(sb, classes) {
 
   const initials = name.split(' ').slice(0,2).map(w => w[0]||'').join('').toUpperCase();
 
-  // Hitung jumlah kelas per topik dari Learning Participation
-  const classCountByTopic = {};
-  classes.forEach(c => {
-    const t = (c['Learning Topic'] || '').trim().toLowerCase();
-    classCountByTopic[t] = (classCountByTopic[t] || 0) + 1;
-  });
-  const getClassCount = (key) => classCountByTopic[key.toLowerCase()] || 0;
-
-  // Hitung Others dari Learning Participation
-  const mandTopicKeys = topics.map(t => t.key.toLowerCase());
-  const othersClasses = classes.filter(c => {
-    const t = (c['Learning Topic'] || '').trim().toLowerCase();
-    return !mandTopicKeys.includes(t);
-  });
-  const othersHours = othersClasses.reduce((s,c) => s + safeNum(c['Learning Hour']||0), 0);
-  const othersCount = othersClasses.length;
+  // Topic counts not available without Learning Participation — shown on-demand
+  const getClassCount = (_key) => 0;
+  const othersHours = 0;
+  const othersCount = 0;
 
   // Topic cards
   let topicsHTML = '';
@@ -1266,43 +1319,6 @@ function buildLearningCard(sb, classes) {
         <div class="topic-hours" style="color:${othersHours>0?'var(--kg-mid)':'var(--gray-300)'};">${othersHours > 0 ? othersHours.toFixed(1)+' jam' : '-'}</div>
       </div>
     </div>`;
-
-  // Learning Participation table — semua kelas
-  const monthOrder = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
-  const sorted = [...classes].sort((a,b) => {
-    const ma = monthOrder.indexOf(a['Month']||a['month']||'');
-    const mb = monthOrder.indexOf(b['Month']||b['month']||'');
-    return ma - mb;
-  });
-
-  let classRows = '';
-  let totalClassHours = 0;
-  sorted.forEach((c, i) => {
-    const prog    = c['Program Name'] || c['program name'] || '-';
-    const org     = c['Organizer / Source'] || c['Organizer'] || '-';
-    const type    = c['Learning Type'] || '-';
-    const topic   = c['Learning Topic'] || '-';
-    const month   = c['Month'] || c['month'] || '-';
-    const hours   = safeNum(c['Learning Hour'] || c['learning hour'] || 0);
-    totalClassHours += hours;
-
-    // Topic chip color
-    const mandTopics = ['sustainability','ai general','ai for newsroom','ai media intelligence','video production','creative thinking'];
-    const isMand = mandTopics.includes(topic.toLowerCase());
-
-    classRows += `
-      <tr>
-        <td style="text-align:center;color:var(--gray-400);font-size:0.75rem;">${i+1}</td>
-        <td><strong>${prog}</strong></td>
-        <td>${org}</td>
-        <td>${type}</td>
-        <td><span class="chip ${isMand?'chip-blue':'chip-gray'}">${topic}</span></td>
-        <td style="text-align:center;">${month}</td>
-        <td style="text-align:center;font-weight:700;color:var(--kg-mid);">${hours > 0 ? hours.toFixed(1) : '-'}</td>
-      </tr>`;
-  });
-
-  const noClasses = classes.length === 0;
 
   return `
     <!-- Profile Banner -->
@@ -1345,12 +1361,7 @@ function buildLearningCard(sb, classes) {
         <div class="learn-val" style="font-size:1rem;color:${isComplete?'var(--success)':'var(--warning)'};">${completion}</div>
         <div class="learn-sub">completion</div>
       </div>
-      <div class="learn-card">
-        <div class="learn-icon">📚</div>
-        <div class="learn-label">Jumlah Kelas</div>
-        <div class="learn-val">${classes.length}</div>
-        <div class="learn-sub">total kelas diikuti</div>
-      </div>
+
     </div>
 
     <!-- Progress Bar -->
@@ -1378,36 +1389,17 @@ function buildLearningCard(sb, classes) {
       <a class="btn-report" href="https://docs.google.com/forms/d/e/1FAIpQLSf8U74xTaJLESZOAVU8qVGYPA-yK_9ypm8n6wyRMHTw_ihTRQ/viewform" target="_blank">📝 Laporkan Jam Belajar</a>
     </div>
 
-    <!-- Learning Participation Table -->
-    <div class="section-divider">Riwayat Kelas (${classes.length} kelas · ${totalClassHours.toFixed(1)} jam)</div>
-    ${noClasses
-      ? '<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">Belum ada data kelas yang tercatat.</div></div>'
-      : `<div class="card" style="padding:0;">
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th style="text-align:center;">#</th>
-                  <th>Program / Nama Kelas</th>
-                  <th>Organizer / Sumber</th>
-                  <th>Tipe</th>
-                  <th>Topik</th>
-                  <th style="text-align:center;">Bulan</th>
-                  <th style="text-align:center;">Jam</th>
-                </tr>
-              </thead>
-              <tbody>${classRows}</tbody>
-              <tfoot>
-                <tr class="tfoot-row">
-                  <td colspan="6" style="text-align:right;padding-right:16px;">Total</td>
-                  <td style="text-align:center;">${totalClassHours.toFixed(1)} jam</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </div>`
-    }
-  `;
+    <!-- Riwayat Kelas — on-demand -->
+    <div class="section-divider">Riwayat Kelas</div>
+    <div id="class-detail-section">
+      <div style="text-align:center;padding:1.5rem;">
+        <button id="btn-load-classes" style="padding:0.75rem 2rem;background:var(--kg-grad2);color:white;border:none;border-radius:10px;font-size:0.9rem;font-weight:600;cursor:pointer;">
+          📋 Lihat Riwayat Kelas Saya
+        </button>
+        <p style="font-size:0.75rem;color:var(--gray-400);margin-top:8px;">Data diambil langsung dari sistem — mungkin butuh beberapa detik</p>
+      </div>
+    </div>
+  \`;
 }
 
 // Kept for compatibility — delegates to buildLearningCard
@@ -1428,15 +1420,14 @@ async function hrSearch() {
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div class="loading-text">Mencari...</div></div>';
 
   try {
-    const [sbRows, partRows, accRows] = await Promise.all([
+    // Only fetch Search Bar (light) — participation loaded on-demand
+    const [sbRows, accRows] = await Promise.all([
       fetchCSV(TABS.searchbar),
-      fetchCSV(TABS.participation),
       accessData.length > 0 ? Promise.resolve(accessData) : fetchCSV(TABS.access),
     ]);
     if (accessData.length === 0) accessData = accRows;
 
-    const sbRow     = sbRows.find(r => normalizeNIK(r['NIK']||r['nik']||'').toLowerCase() === nik);
-    const myClasses = partRows.filter(r => normalizeNIK(r['NIK']||r['nik']||'').toLowerCase() === nik);
+    const sbRow = sbRows.find(r => normalizeNIK(r['NIK']||r['nik']||'').toLowerCase() === nik);
 
     // Layer check for Employee role
     if (!(currentUser.role === 'HR' || currentUser.role === 'Admin')) {
@@ -1449,11 +1440,29 @@ async function hrSearch() {
       }
     }
 
-    if (!sbRow && myClasses.length === 0) {
+    if (!sbRow) {
       el.innerHTML = '<div class="empty-state"><div class="empty-icon">😕</div><div class="empty-text">NIK tidak ditemukan dalam database.</div></div>';
       return;
     }
-    el.innerHTML = buildLearningCard(sbRow, myClasses);
+    el.innerHTML = buildLearningCard(sbRow, []);
+
+    // Wire on-demand class loader for this searched NIK
+    const detailBtn = document.getElementById('btn-load-classes');
+    if (detailBtn) {
+      detailBtn.addEventListener('click', async () => {
+        detailBtn.disabled = true;
+        detailBtn.textContent = 'Memuat...';
+        try {
+          const partRows  = await fetchCSV(TABS.participation);
+          const myClasses = partRows.filter(r => normalizeNIK(r['NIK']||r['nik']||'').toLowerCase() === nik);
+          const classSection = document.getElementById('class-detail-section');
+          if (classSection) classSection.innerHTML = buildClassTable(myClasses);
+        } catch(e) {
+          detailBtn.textContent = 'Gagal memuat. Coba lagi.';
+          detailBtn.disabled = false;
+        }
+      });
+    }
   } catch(e) {
     el.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Error: ' + e.message + '</div></div>';
   }
