@@ -1146,22 +1146,40 @@ function switchTab(tabId, loadFn) {
 }
 
 // ============================================================
-// MY LEARNING
+// MY LEARNING — summary dari Search Bar, kelas dari Learning Participation
 // ============================================================
 async function loadMyLearning() {
   const el = document.getElementById('my-learning-content');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div class="loading-text">Memuat data learning...</div></div>';
   try {
-    if (dbData.length === 0) dbData = await fetchCSV(TABS.database);
+    // Load Search Bar + Learning Participation paralel
+    const [sbRows, partRows] = await Promise.all([
+      fetchCSV(TABS.searchbar),
+      fetchCSV(TABS.participation),
+    ]);
+
     const nik = normalizeNIK(currentUser.nik).toLowerCase();
-    const emp = dbData.find(r => normalizeNIK(r['NIK']||'').toLowerCase() === nik);
-    if (!emp) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">😕</div><div class="empty-text">Data learning untuk NIK ini belum tersedia.</div></div>'; return; }
-    el.innerHTML = buildEmployeeCard(emp);
+
+    // Search Bar: 1 baris summary per NIK
+    const sbRow = sbRows.find(r => normalizeNIK(r['NIK']||r['nik']||'').toLowerCase() === nik);
+
+    // Learning Participation: semua kelas milik NIK ini
+    const myClasses = partRows.filter(r => normalizeNIK(r['NIK']||r['nik']||'').toLowerCase() === nik);
+
+    if (!sbRow && myClasses.length === 0) {
+      el.innerHTML = '<div class="empty-state"><div class="empty-icon">😕</div><div class="empty-text">Data learning untuk NIK ini belum tersedia.</div></div>';
+      return;
+    }
+
+    el.innerHTML = buildLearningCard(sbRow, myClasses);
   } catch(e) {
     el.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Gagal memuat data: ' + e.message + '</div></div>';
   }
 }
 
+// ============================================================
 // Helper: safely parse numbers, treating #N/A, blank, errors as 0
+// ============================================================
 function safeNum(val) {
   if (!val || val === '') return 0;
   if (typeof val === 'string' && val.trim().startsWith('#')) return 0;
@@ -1183,57 +1201,103 @@ function getCol(row, ...keys) {
   return '';
 }
 
-function buildEmployeeCard(emp) {
-  const name        = getCol(emp, 'NAMA', 'nama', 'Name') || '-';
-  const nik         = getCol(emp, 'NIK', 'nik') || '-';
-  const status      = getCol(emp, 'Status', 'STATUS') || '-';
-  const position    = getCol(emp, 'Position', 'POSITION', 'Posisi') || '-';
-  const unit        = getCol(emp, 'Unit', 'UNIT') || '-';
-  const directorate = getCol(emp, 'Directorate', 'DIRECTORATE', 'Direktorat') || '-';
+// ============================================================
+// BUILD LEARNING CARD — dari Search Bar + Learning Participation
+// ============================================================
+function buildLearningCard(sb, classes) {
+  // Info karyawan — dari Search Bar atau dari baris pertama kelas
+  const ref      = sb || classes[0] || {};
+  const name     = getCol(ref, 'Name', 'NAMA', 'nama') || '-';
+  const nik      = getCol(ref, 'NIK', 'nik') || '-';
+  const status   = getCol(ref, 'Status', 'STATUS') || '-';
+  const position = getCol(ref, 'Position', 'POSITION') || '-';
+  const unit     = getCol(ref, 'Unit', 'UNIT') || '-';
+  const direct   = getCol(ref, 'Directorate', 'DIRECTORATE') || '-';
 
-  const allHours  = safeNum(getCol(emp, 'All Hours', 'ALL HOURS'));
-  const learningH = safeNum(getCol(emp, 'Learning Hours', 'LEARNING HOURS'));
-  const m1        = safeNum(getCol(emp, 'First Mandatory', 'FIRST MANDATORY'));
-  const m2        = safeNum(getCol(emp, 'Second Mandatory', 'SECOND MANDATORY'));
-  const m3        = safeNum(getCol(emp, 'Third Mandatory', 'THIRD MANDATORY'));
-  const target    = 18;
-  const progPct   = Math.min(100, Math.round((learningH / target) * 100));
-  const progClass = learningH >= target ? 'prog-complete' : learningH > 0 ? 'prog-progress' : 'prog-inactive';
-  const progText  = learningH >= target ? '✅ Telah Memenuhi Target' : learningH > 0 ? '⏳ Sedang Berlangsung' : '❌ Belum Ada Aktivitas';
+  // Summary dari Search Bar
+  const asLearner  = sb ? safeNum(getCol(sb, 'as Learner')) : 0;
+  const asTrainer  = sb ? safeNum(getCol(sb, 'as Trainer')) : 0;
+  const totalHours = sb ? safeNum(getCol(sb, 'Total Hours')) : 0;
+  const completion = sb ? (getCol(sb, 'Completion') || '-') : '-';
+  const target     = 18;
 
+  // Mandatory topics dari Search Bar
   const topics = [
-    { key: 'Sustainability',        emoji: '🌱' },
-    { key: 'Video Production',      emoji: '🎬' },
-    { key: 'AI General',            emoji: '🤖' },
-    { key: 'AI for Newsroom',       emoji: '📰' },
-    { key: 'AI Media Intelligence', emoji: '🧠' },
-    { key: 'Creative Thinking',     emoji: '💡' },
-    { key: 'Others',                emoji: '📦' },
+    { key: 'Sustainability',        emoji: '🌱', mandatory: true  },
+    { key: 'AI General',            emoji: '🤖', mandatory: true  },
+    { key: 'AI for Newsroom',       emoji: '📰', mandatory: true  },
+    { key: 'AI Media Intelligence', emoji: '🧠', mandatory: true  },
+    { key: 'Video Production',      emoji: '🎬', mandatory: true  },
+    { key: 'Creative Thinking',     emoji: '💡', mandatory: true  },
   ];
 
+  // Learning hours = as Learner (sesuai formula Search Bar)
+  const learningH = asLearner;
+  const progPct   = Math.min(100, Math.round((learningH / target) * 100));
+  const isComplete = completion.toString().toLowerCase().includes('complete') || learningH >= target;
+  const progClass  = isComplete ? 'prog-complete' : learningH > 0 ? 'prog-progress' : 'prog-inactive';
+  const progText   = isComplete ? '✅ Telah Memenuhi Target' : learningH > 0 ? '⏳ Sedang Berlangsung' : '❌ Belum Ada Aktivitas';
+
+  const initials = name.split(' ').slice(0,2).map(w => w[0]||'').join('').toUpperCase();
+
+  // Topic cards
   let topicsHTML = '';
   topics.forEach(({ key, emoji }) => {
-    // getCol handles extra spaces e.g. "AI General  (jam)" vs "AI General (jam)"
-    const hrs   = safeNum(getCol(emp, key + ' (jam)', key + '  (jam)', key));
-    const kelas = Math.round(safeNum(getCol(emp, key + ' (kelas)', key + '  (kelas)')));
+    const hrs = sb ? safeNum(getCol(sb, key)) : 0;
     topicsHTML += `
       <div class="topic-pill">
         <div>
           <div class="topic-name">${emoji} ${key}</div>
-          <div class="topic-sessions">${kelas > 0 ? kelas + ' kelas' : '-'}</div>
+          <div class="topic-sessions" style="font-size:0.7rem;color:var(--gray-500);">Mandatory Topic</div>
         </div>
-        <div class="topic-hours">${hrs > 0 ? hrs.toFixed(1) + ' jam' : '-'}</div>
+        <div class="topic-hours" style="color:${hrs>0?'var(--kg-mid)':'var(--gray-300)'};">${hrs > 0 ? hrs.toFixed(1)+' jam' : '-'}</div>
       </div>`;
   });
 
-  const initials = name.split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase();
+  // Learning Participation table — semua kelas
+  const monthOrder = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+  const sorted = [...classes].sort((a,b) => {
+    const ma = monthOrder.indexOf(a['Month']||a['month']||'');
+    const mb = monthOrder.indexOf(b['Month']||b['month']||'');
+    return ma - mb;
+  });
+
+  let classRows = '';
+  let totalClassHours = 0;
+  sorted.forEach((c, i) => {
+    const prog    = c['Program Name'] || c['program name'] || '-';
+    const org     = c['Organizer / Source'] || c['Organizer'] || '-';
+    const type    = c['Learning Type'] || '-';
+    const topic   = c['Learning Topic'] || '-';
+    const month   = c['Month'] || c['month'] || '-';
+    const hours   = safeNum(c['Learning Hour'] || c['learning hour'] || 0);
+    totalClassHours += hours;
+
+    // Topic chip color
+    const mandTopics = ['sustainability','ai general','ai for newsroom','ai media intelligence','video production','creative thinking'];
+    const isMand = mandTopics.includes(topic.toLowerCase());
+
+    classRows += `
+      <tr>
+        <td style="text-align:center;color:var(--gray-400);font-size:0.75rem;">${i+1}</td>
+        <td><strong>${prog}</strong></td>
+        <td>${org}</td>
+        <td>${type}</td>
+        <td><span class="chip ${isMand?'chip-blue':'chip-gray'}">${topic}</span></td>
+        <td style="text-align:center;">${month}</td>
+        <td style="text-align:center;font-weight:700;color:var(--kg-mid);">${hours > 0 ? hours.toFixed(1) : '-'}</td>
+      </tr>`;
+  });
+
+  const noClasses = classes.length === 0;
 
   return `
+    <!-- Profile Banner -->
     <div class="emp-profile">
       <div class="emp-avatar">${initials}</div>
       <div class="emp-info">
         <div class="emp-name">${name}</div>
-        <div class="emp-meta">${position} · ${unit} · ${directorate}</div>
+        <div class="emp-meta">${position} · ${unit} · ${direct}</div>
         <div class="emp-meta" style="margin-top:4px;">Status: ${status}</div>
         <div class="emp-nik">NIK: ${nik}</div>
       </div>
@@ -1242,86 +1306,141 @@ function buildEmployeeCard(emp) {
       </div>
     </div>
 
-    <div class="learn-grid">
-      <div class="learn-card">
-        <div class="learn-icon">⏱️</div>
-        <div class="learn-label">Total Semua Jam</div>
-        <div class="learn-val">${allHours.toFixed(1)}</div>
-        <div class="learn-sub">termasuk 3 mandatory pertama</div>
-      </div>
+    <!-- Summary Cards -->
+    <div class="learn-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-bottom:20px;">
       <div class="learn-card">
         <div class="learn-icon">📖</div>
-        <div class="learn-label">Learning Hours</div>
-        <div class="learn-val">${learningH.toFixed(1)}</div>
-        <div class="learn-sub">target: ${target} jam</div>
+        <div class="learn-label">As Learner</div>
+        <div class="learn-val">${asLearner.toFixed(1)}</div>
+        <div class="learn-sub">jam (target: ${target})</div>
       </div>
-      <div class="learn-card" style="background:${m1>0?'#eff6ff':'white'}">
-        <div class="learn-icon">🏅</div>
-        <div class="learn-label">Mandatory 1</div>
-        <div class="learn-val" style="color:${m1>0?'var(--kg-mid)':'var(--gray-300)'}">${m1 > 0 ? m1.toFixed(1) + ' jam' : '-'}</div>
-        <div class="learn-sub">${m1>0 ? 'selesai' : 'belum'}</div>
+      <div class="learn-card">
+        <div class="learn-icon">🎤</div>
+        <div class="learn-label">As Trainer</div>
+        <div class="learn-val">${asTrainer.toFixed(1)}</div>
+        <div class="learn-sub">jam</div>
       </div>
-      <div class="learn-card" style="background:${m2>0?'#eff6ff':'white'}">
-        <div class="learn-icon">🏅</div>
-        <div class="learn-label">Mandatory 2</div>
-        <div class="learn-val" style="color:${m2>0?'var(--kg-mid)':'var(--gray-300)'}">${m2 > 0 ? m2.toFixed(1) + ' jam' : '-'}</div>
-        <div class="learn-sub">${m2>0 ? 'selesai' : 'belum'}</div>
+      <div class="learn-card">
+        <div class="learn-icon">⏱️</div>
+        <div class="learn-label">Total Hours</div>
+        <div class="learn-val">${totalHours.toFixed(1)}</div>
+        <div class="learn-sub">learner + trainer</div>
       </div>
-      <div class="learn-card" style="background:${m3>0?'#eff6ff':'white'}">
-        <div class="learn-icon">🏅</div>
-        <div class="learn-label">Mandatory 3</div>
-        <div class="learn-val" style="color:${m3>0?'var(--kg-mid)':'var(--gray-300)'}">${m3 > 0 ? m3.toFixed(1) + ' jam' : '-'}</div>
-        <div class="learn-sub">${m3>0 ? 'selesai' : 'belum'}</div>
+      <div class="learn-card" style="background:${isComplete?'#d1fae5':'white'}">
+        <div class="learn-icon">${isComplete?'✅':'⏳'}</div>
+        <div class="learn-label">Status</div>
+        <div class="learn-val" style="font-size:1rem;color:${isComplete?'var(--success)':'var(--warning)'};">${completion}</div>
+        <div class="learn-sub">completion</div>
+      </div>
+      <div class="learn-card">
+        <div class="learn-icon">📚</div>
+        <div class="learn-label">Jumlah Kelas</div>
+        <div class="learn-val">${classes.length}</div>
+        <div class="learn-sub">total kelas diikuti</div>
       </div>
     </div>
 
-    <div style="margin-bottom:20px;">
+    <!-- Progress Bar -->
+    <div style="margin-bottom:24px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-        <span style="font-size:0.8rem;font-weight:600;color:var(--gray-700);">Progress Learning Hours</span>
+        <span style="font-size:0.8rem;font-weight:600;color:var(--gray-700);">Progress Learning Hours (as Learner)</span>
         <span style="font-size:0.8rem;color:var(--kg-mid);font-weight:700;">${learningH.toFixed(1)} / ${target} jam (${progPct}%)</span>
       </div>
       <div class="prog-bar" style="height:10px;">
         <div class="prog-fill ${progPct>=100?'green':progPct>0?'':'red'}" style="width:${progPct}%"></div>
       </div>
+      <div style="font-size:0.72rem;color:var(--gray-400);margin-top:4px;">*3 kelas Mandatory Topic pertama tidak dihitung sebagai Learning Hours</div>
     </div>
 
-    <div class="section-divider">Rincian per Topik</div>
-    <div class="topic-grid">${topicsHTML}</div>
+    <!-- Mandatory Topics -->
+    <div class="section-divider">Mandatory Topics</div>
+    <div class="topic-grid" style="margin-bottom:24px;">${topicsHTML}</div>
+
+    <!-- Self Report Button -->
+    <div class="self-report-bar" style="margin-bottom:24px;">
+      <div>
+        <div class="self-report-text">Belajar mandiri? Laporkan jam belajar Anda</div>
+        <span>Self-report learning hours melalui Google Form resmi</span>
+      </div>
+      <a class="btn-report" href="https://docs.google.com/forms/d/e/1FAIpQLSf8U74xTaJLESZOAVU8qVGYPA-yK_9ypm8n6wyRMHTw_ihTRQ/viewform" target="_blank">📝 Laporkan Jam Belajar</a>
+    </div>
+
+    <!-- Learning Participation Table -->
+    <div class="section-divider">Riwayat Kelas (${classes.length} kelas · ${totalClassHours.toFixed(1)} jam)</div>
+    ${noClasses
+      ? '<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">Belum ada data kelas yang tercatat.</div></div>'
+      : `<div class="card" style="padding:0;">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style="text-align:center;">#</th>
+                  <th>Program / Nama Kelas</th>
+                  <th>Organizer / Sumber</th>
+                  <th>Tipe</th>
+                  <th>Topik</th>
+                  <th style="text-align:center;">Bulan</th>
+                  <th style="text-align:center;">Jam</th>
+                </tr>
+              </thead>
+              <tbody>${classRows}</tbody>
+              <tfoot>
+                <tr class="tfoot-row">
+                  <td colspan="6" style="text-align:right;padding-right:16px;">Total</td>
+                  <td style="text-align:center;">${totalClassHours.toFixed(1)} jam</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>`
+    }
   `;
 }
 
+// Kept for compatibility — delegates to buildLearningCard
+function buildEmployeeCard(emp) {
+  return buildLearningCard(emp, []);
+}
+
+
+
 // ============================================================
-// HR SEARCH
+// HR SEARCH — pakai Search Bar + Learning Participation
 // ============================================================
 async function hrSearch() {
   const rawNik = document.getElementById('hr-search-input').value.trim();
   if (!rawNik) { showToast('Masukkan NIK terlebih dahulu', 'error'); return; }
-  const nik = normalizeNIK(rawNik);
-  const el = document.getElementById('hr-search-result');
+  const nik = normalizeNIK(rawNik).toLowerCase();
+  const el  = document.getElementById('hr-search-result');
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div class="loading-text">Mencari...</div></div>';
 
   try {
-    if (dbData.length === 0) dbData = await fetchCSV(TABS.database);
-    if (accessData.length === 0) accessData = await fetchCSV(TABS.access);
+    const [sbRows, partRows, accRows] = await Promise.all([
+      fetchCSV(TABS.searchbar),
+      fetchCSV(TABS.participation),
+      accessData.length > 0 ? Promise.resolve(accessData) : fetchCSV(TABS.access),
+    ]);
+    if (accessData.length === 0) accessData = accRows;
 
-    let emp = dbData.find(r => normalizeNIK(r['NIK']||r['nik']||'').toLowerCase() === nik.toLowerCase());
+    const sbRow     = sbRows.find(r => normalizeNIK(r['NIK']||r['nik']||'').toLowerCase() === nik);
+    const myClasses = partRows.filter(r => normalizeNIK(r['NIK']||r['nik']||'').toLowerCase() === nik);
 
-    // Admin/HR bisa cari semua. Employee hanya sesuai layer dan tetap boleh lihat diri sendiri.
-    if (emp && !(currentUser.role === 'HR' || currentUser.role === 'Admin')) {
-      const selfSearch = nik.toLowerCase() === normalizeNIK(currentUser.nik).toLowerCase();
-      const targetUserAccess = accessData.find(a => normalizeNIK(a['NIK']||a['nik']||'').toLowerCase() === nik.toLowerCase());
-      const targetLayer = targetUserAccess ? getAccessLayer(targetUserAccess) : 'NL';
+    // Layer check for Employee role
+    if (!(currentUser.role === 'HR' || currentUser.role === 'Admin')) {
+      const selfSearch       = nik === normalizeNIK(currentUser.nik).toLowerCase();
+      const targetUserAccess = accessData.find(a => normalizeNIK(a['NIK']||a['nik']||'').toLowerCase() === nik);
+      const targetLayer      = targetUserAccess ? getAccessLayer(targetUserAccess) : 'NL';
       if (!selfSearch && !canAccessLayer(currentUser.layer, targetLayer)) {
         el.innerHTML = '<div class="empty-state"><div class="empty-icon">🔒</div><div class="empty-text">Anda tidak memiliki akses untuk melihat data karyawan ini.</div></div>';
         return;
       }
     }
 
-    if (!emp) {
+    if (!sbRow && myClasses.length === 0) {
       el.innerHTML = '<div class="empty-state"><div class="empty-icon">😕</div><div class="empty-text">NIK tidak ditemukan dalam database.</div></div>';
       return;
     }
-    el.innerHTML = buildEmployeeCard(emp);
+    el.innerHTML = buildLearningCard(sbRow, myClasses);
   } catch(e) {
     el.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Error: ' + e.message + '</div></div>';
   }
