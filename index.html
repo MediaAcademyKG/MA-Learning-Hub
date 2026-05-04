@@ -748,6 +748,25 @@ async function api(action, extraParams) {
   return json.data;
 }
 
+// ============================================================
+// DATA FETCH HELPERS — in-memory cache
+// ============================================================
+const _cache = {};
+
+async function fetchAccess() {
+  if (_cache.access) return _cache.access;
+  const data = await api('access');
+  _cache.access = Array.isArray(data) ? data : [];
+  return _cache.access;
+}
+
+async function fetchRecap() {
+  if (_cache.recap) return _cache.recap;
+  const data = await api('recap');
+  _cache.recap = Array.isArray(data) ? data : [];
+  return _cache.recap;
+}
+
 // NIK normalization: strip leading zeros untuk NIK angka murni
 // "012345" → "12345", "KG001" → "KG001"
 function normalizeNIK(nik) {
