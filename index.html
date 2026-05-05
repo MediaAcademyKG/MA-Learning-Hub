@@ -734,7 +734,7 @@ const PUB_BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAn
 // CONFIG — Apps Script Web App
 // Setelah deploy Apps Script, ganti URL di bawah ini
 // ============================================================
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx3y9AN97tZhkzyMcNyhVfvkKH8K3u6Z1SIwmMsUDR84HSCTMrme1nljucNVX64Eik/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxURErkPhqnvWQo5rKR7wblLn8qqh8HI1kf4T2AY-XdszGEuLpu25lLI5_Z37eMR9E/exec';
 
 // Fetch dari Apps Script — lebih cepat dari gviz/tq karena tidak terpengaruh formula
 async function api(action, extraParams, attempt=1) {
@@ -1343,28 +1343,57 @@ function getCol(row, ...keys) {
 // BUILD LEARNING CARD — dari Search Bar + Learning Participation
 // ============================================================
 function buildLearningCard(sb, classes) {
+  // DEBUG — log semua kolom yang diterima (lihat Browser Console > F12)
+  if (sb) {
+    console.group('[KG Portal] Raw keys dari Apps Script:');
+    console.log('Semua kolom:', Object.keys(sb));
+    console.table({
+      'All Hours': sb['All Hours'],
+      'Learning Hours': sb['Learning Hours'],
+      'As Learner (Jam)': sb['As Learner (Jam)'],
+      'As Trainer (Jam)': sb['As Trainer (Jam)'],
+      'As Learner (Jumlah Kelas)': sb['As Learner (Jumlah Kelas)'],
+      'As Trainer (Jumlah Kelas)': sb['As Trainer (Jumlah Kelas)'],
+      'First Mandatory': sb['First Mandatory'],
+      'Second Mandatory': sb['Second Mandatory'],
+      'Third Mandatory': sb['Third Mandatory'],
+      'Sustainability (jam)': sb['Sustainability (jam)'],
+      'AI General  (jam)': sb['AI General  (jam)'],
+      'Others (jam)': sb['Others (jam)'],
+      'Others (kelas)': sb['Others (kelas)'],
+    });
+    console.groupEnd();
+  }
   // Info karyawan — dari Search Bar atau dari baris pertama kelas
   const ref      = sb || classes[0] || {};
-  const name     = getCol(ref, 'Name', 'NAMA', 'nama') || '-';
+  const name     = getCol(ref, 'NAMA', 'Name', 'nama') || '-';  // Database uses NAMA
   const nik      = getCol(ref, 'NIK', 'nik') || '-';
-  const status   = getCol(ref, 'Status', 'STATUS') || '-';
-  const position = getCol(ref, 'Position', 'POSITION') || '-';
-  const unit     = getCol(ref, 'Unit', 'UNIT') || '-';
-  const direct   = getCol(ref, 'Directorate', 'DIRECTORATE') || '-';
+  const status   = getCol(ref, 'Status') || '-';
+  const position = getCol(ref, 'Position') || '-';
+  const unit     = getCol(ref, 'Unit') || '-';
+  const direct   = getCol(ref, 'Directorate') || '-';
 
   // Summary — baca dari Database
   const allHours    = safeNum(getCol(sb, 'All Hours'));
-  const learningH   = safeNum(getCol(sb, 'Learning Hours'));
+  // As Learner/Trainer — coba berbagai variasi nama kolom dari sheet
   const asLearnerJ  = safeNum(getCol(sb, 'As Learner (Jam)'));
   const asTrainerJ  = safeNum(getCol(sb, 'As Trainer (Jam)'));
   const asLearnerK  = safeNum(getCol(sb, 'As Learner (Jumlah Kelas)'));
   const asTrainerK  = safeNum(getCol(sb, 'As Trainer (Jumlah Kelas)'));
-  const totalHours  = asLearnerJ + asTrainerJ;
   const m1          = safeNum(getCol(sb, 'First Mandatory'));
   const m2          = safeNum(getCol(sb, 'Second Mandatory'));
   const m3          = safeNum(getCol(sb, 'Third Mandatory'));
   const mandDone    = [m1,m2,m3].filter(x => x > 0).length;
-  const completion  = mandDone >= 3 && learningH >= 18 ? 'Complete' : mandDone > 0 || learningH > 0 ? 'Incomplete' : '-';
+  // BUG FIX: Selalu baca 'Learning Hours' langsung dari sheet — sheet sudah hitung dengan benar
+  // Jangan fallback ke allHours karena itu termasuk 3 mandatory pertama
+  // FIX: Baca Learning Hours langsung dari kolom sheet (sudah dihitung benar oleh formula sheet)
+  // Fallback ke allHours - mandatory HANYA jika kolom benar-benar kosong/tidak ada
+  const _lhRaw = getCol(sb, 'Learning Hours', 'learning hours', 'LEARNING HOURS');
+  const learningH = (_lhRaw !== '' && _lhRaw !== null && _lhRaw !== undefined)
+    ? safeNum(_lhRaw)
+    : Math.max(0, allHours - (m1 + m2 + m3));
+  const totalHours  = asLearnerJ + asTrainerJ;
+  const completion  = learningH >= 18 ? 'Complete' : learningH > 0 ? 'Incomplete' : '-';
   const target      = 18;
 
   // Mandatory topics
@@ -1376,7 +1405,7 @@ function buildLearningCard(sb, classes) {
     { key: 'Video Production',      emoji: '🎬', mandatory: true  },
     { key: 'Creative Thinking',     emoji: '💡', mandatory: true  },
   ];
-  const progPct   = Math.min(100, Math.round((asLearnerJ / target) * 100));
+  const progPct   = Math.min(100, Math.round((learningH / target) * 100));
   const isComplete = completion.toString().toLowerCase().includes('complete') || learningH >= target;
   const progClass  = isComplete ? 'prog-complete' : learningH > 0 ? 'prog-progress' : 'prog-inactive';
   const progText   = isComplete ? '✅ Telah Memenuhi Target' : learningH > 0 ? '⏳ Sedang Berlangsung' : '❌ Belum Ada Aktivitas';
@@ -1392,8 +1421,16 @@ function buildLearningCard(sb, classes) {
   let topicsHTML = '';
   topics.forEach(({ key, emoji }) => {
     // Nama kolom di Database: "Sustainability (jam)" dan "Sustainability (kelas)"
-    const hrs   = sb ? safeNum(getCol(sb, key + ' (jam)', key)) : 0;
-    const count = sb ? parseInt(getCol(sb, key + ' (kelas)') || 0) : 0;
+    // Exact column names from Database tab header
+    // Note: "AI General  (jam)" has double space — try both
+    const hrs   = sb ? safeNum(getCol(sb,
+      key + ' (jam)',   // standard: "Sustainability (jam)"
+      key + '  (jam)'  // double space: "AI General  (jam)"
+    )) : 0;
+    const count = sb ? safeNum(getCol(sb,
+      key + ' (kelas)',
+      key + '  (kelas)'  // double space variant
+    )) : 0;
     topicsHTML += `
       <div class="topic-pill">
         <div>
@@ -1407,8 +1444,8 @@ function buildLearningCard(sb, classes) {
   });
 
   // Others card
-  const othersHrs = sb ? safeNum(getCol(sb, 'Others (jam)', 'Others')) : 0;
-  const othersKelas = sb ? parseInt(getCol(sb, 'Others (kelas)') || 0) : 0;
+  const othersHrs   = sb ? safeNum(getCol(sb, 'Others (jam)')) : 0;
+  const othersKelas = sb ? safeNum(getCol(sb, 'Others (kelas)')) : 0;
   topicsHTML += `
     <div class="topic-pill">
       <div>
@@ -1485,7 +1522,7 @@ function buildLearningCard(sb, classes) {
     <div style="margin-bottom:24px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
         <span style="font-size:0.8rem;font-weight:600;color:var(--gray-700);">Progress As Learner</span>
-        <span style="font-size:0.8rem;color:var(--kg-mid);font-weight:700;">${asLearnerJ.toFixed(1)} / ${target} jam (${progPct}%)</span>
+        <span style="font-size:0.8rem;color:var(--kg-mid);font-weight:700;">${learningH.toFixed(1)} / ${target} jam (${progPct}%)</span>
       </div>
       <div class="prog-bar" style="height:10px;">
         <div class="prog-fill ${progPct>=100?'green':progPct>0?'':'red'}" style="width:${progPct}%"></div>
