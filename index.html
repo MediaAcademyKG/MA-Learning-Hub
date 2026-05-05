@@ -1206,8 +1206,18 @@ async function loadMyLearning() {
   try {
     const nik = normalizeNIK(currentUser.nik).toLowerCase();
     // Fetch Search Bar data untuk NIK ini via Apps Script
-    const sbRows = await api('searchbar', { nik });
-    const sbRow = Array.isArray(sbRows) ? sbRows[0] : sbRows;
+    // Retry searchbar up to 3x — CORS retry handled inside api()
+    let sbRow = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const sbRows = await api('searchbar', { nik });
+        sbRow = Array.isArray(sbRows) ? sbRows[0] : sbRows;
+        break;
+      } catch(e) {
+        if (attempt === 3) throw e;
+        await new Promise(r => setTimeout(r, 1500 * attempt));
+      }
+    }
 
     if (!sbRow) {
       el.innerHTML = '<div class="empty-state"><div class="empty-icon">😕</div><div class="empty-text">Data learning untuk NIK ini belum tersedia.</div></div>';
@@ -1570,9 +1580,16 @@ function renderDashboard(el) {
   });
 
   const totalEmp   = validData.length;
-  const noActivity = validData.filter(r => safeNum(getCol(r, 'Learning Hours')) === 0).length;
+  // "Belum Aktif" = All Hours == 0 (sesuai definisi tab Recap di Google Sheet)
+  // "In Progress" = sudah ada aktivitas tapi Learning Hours < 18
+  // "Selesai" = Learning Hours >= 18
+  const noActivity = validData.filter(r => safeNum(getCol(r, 'All Hours')) === 0).length;
   const completed  = validData.filter(r => safeNum(getCol(r, 'Learning Hours')) >= 18).length;
-  const inProgress = validData.filter(r => { const lh = safeNum(getCol(r, 'Learning Hours')); return lh > 0 && lh < 18; }).length;
+  const inProgress = validData.filter(r => {
+    const ah = safeNum(getCol(r, 'All Hours'));
+    const lh = safeNum(getCol(r, 'Learning Hours'));
+    return ah > 0 && lh < 18;
+  }).length;
   const totalHours = validData.reduce((s,r) => s + safeNum(getCol(r, 'Learning Hours')), 0);
 
   // Mandatory: hitung dari 6 topik aktual pakai safeNum + getCol (handle spasi & #N/A)
@@ -1589,16 +1606,26 @@ function renderDashboard(el) {
     const unit = getCol(r, 'Unit', 'UNIT') || 'Lainnya';
     if (!units[unit]) units[unit] = { total:0, noAct:0, inProg:0, comp:0, mand0:0, mand1:0, mand2:0, mand3p:0 };
     units[unit].total++;
+    const ah = safeNum(getCol(r, 'All Hours'));
     const lh = safeNum(getCol(r, 'Learning Hours'));
-    if (lh === 0) units[unit].noAct++;
-    else if (lh >= 18) units[unit].comp++;
-    else units[unit].inProg++;
+    if (ah === 0) units[unit].noAct++;        // Belum Aktif = All Hours == 0
+    else if (lh >= 18) units[unit].comp++;    // Selesai = Learning Hours >= 18
+    else units[unit].inProg++;                // In Progress = ada aktivitas, LH < 18
     const mc = countMand(r);
     if (mc === 0) units[unit].mand0++;
     else if (mc === 1) units[unit].mand1++;
     else if (mc === 2) units[unit].mand2++;
     else units[unit].mand3p++;
   });
+
+  // Totals for footer row
+  const totNoAct  = Object.values(units).reduce((s,u)=>s+u.noAct,0);
+  const totInProg = Object.values(units).reduce((s,u)=>s+u.inProg,0);
+  const totComp   = Object.values(units).reduce((s,u)=>s+u.comp,0);
+  const totMand0  = Object.values(units).reduce((s,u)=>s+u.mand0,0);
+  const totMand1  = Object.values(units).reduce((s,u)=>s+u.mand1,0);
+  const totMand2  = Object.values(units).reduce((s,u)=>s+u.mand2,0);
+  const totMand3p = Object.values(units).reduce((s,u)=>s+u.mand3p,0);
 
   let unitLHRows = '';
   let unitMandRows = '';
@@ -1626,6 +1653,29 @@ function renderDashboard(el) {
       <td style="text-align:center;">${pct(u.mand3p,u.total)}</td>
     </tr>`;
   });
+
+  // TOTAL footer rows
+  const totalFooterStyle = 'background:#1e3a5f;color:white;font-weight:700;';
+  unitLHRows += `<tr style="${totalFooterStyle}">
+    <td><strong>TOTAL</strong></td>
+    <td style="text-align:center;">${totalEmp}</td>
+    <td style="text-align:center;"><span class="chip chip-red">${totNoAct}</span></td>
+    <td style="text-align:center;">${pct(totNoAct,totalEmp)}</td>
+    <td style="text-align:center;"><span class="chip chip-amber">${totInProg}</span></td>
+    <td style="text-align:center;">${pct(totInProg,totalEmp)}</td>
+    <td style="text-align:center;"><span class="chip chip-green">${totComp}</span></td>
+    <td style="text-align:center;">${pct(totComp,totalEmp)}</td>
+  </tr>`;
+  unitMandRows += `<tr style="${totalFooterStyle}">
+    <td><strong>TOTAL</strong></td>
+    <td style="text-align:center;">${totalEmp}</td>
+    <td style="text-align:center;"><span class="chip chip-gray">${totMand0}</span></td>
+    <td style="text-align:center;">${pct(totMand0,totalEmp)}</td>
+    <td style="text-align:center;">${totMand1}</td>
+    <td style="text-align:center;">${totMand2}</td>
+    <td style="text-align:center;"><span class="chip chip-blue">${totMand3p}</span></td>
+    <td style="text-align:center;">${pct(totMand3p,totalEmp)}</td>
+  </tr>`;
 
   const compPct = totalEmp > 0 ? ((completed/totalEmp)*100).toFixed(1) : '0';
   const mandPct = totalEmp > 0 ? ((mand3plus/totalEmp)*100).toFixed(1) : '0';
@@ -1729,7 +1779,17 @@ function pct(val, total) {
 async function loadParticipation() {
   const el = document.getElementById('participation-content');
   try {
-    if (partData.length === 0) partData = await api("participation_full");
+    if (partData.length === 0) {
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          partData = await api('participation_full');
+          break;
+        } catch(e) {
+          if (attempt === 3) throw e;
+          await new Promise(r => setTimeout(r, 1500 * attempt));
+        }
+      }
+    }
     filteredPartData = [...partData];
     document.getElementById('part-count').textContent = 'Menampilkan ' + partData.length + ' data';
     renderParticipationTable();
