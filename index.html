@@ -1023,10 +1023,6 @@ let _preloadPromise = null;
 
 function startPreload() {
   if (_preloadPromise) return;
-  // Panggil warmup dulu — Apps Script akan pre-cache database & access
-  // Ini "memanaskan" server sebelum login diklik
-  api('warmup', {}).catch(() => {}); // fire-and-forget, tidak tunggu hasilnya
-
   _preloadPromise = fetchAccess()
     .then(data => { accessData = data; })
     .catch(() => {});
