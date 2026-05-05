@@ -734,7 +734,7 @@ const PUB_BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAn
 // CONFIG — Apps Script Web App
 // Setelah deploy Apps Script, ganti URL di bawah ini
 // ============================================================
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw1Bc0KjoWv-HbatOKZLKsEx0YptJYAcm_7RKeEA-sFirkhT0InFKpxQ7cSFwqhcA/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwbbYrN0eW1edocQy8CJdV0f31LX9Ij8RrONlKzNbWEV39T5gXjKAh-s6RHS37_uUU/exec';
 
 // ── CSV URLs (published Google Sheet tabs) — tidak perlu Apps Script, tidak ada CORS ──
 // Ganti SHEET_ID dengan ID sheet Database kamu
@@ -1223,7 +1223,7 @@ function switchTab(tabId, loadFn) {
 }
 
 // ============================================================
-// MY LEARNING — summary dari Search Bar, kelas dari Learning Participation
+// MY LEARNING — load summary + riwayat kelas sekaligus
 // ============================================================
 async function loadMyLearning() {
   const el = document.getElementById('my-learning-content');
@@ -1231,44 +1231,26 @@ async function loadMyLearning() {
   try {
     const nik = normalizeNIK(currentUser.nik);
 
-    // Ambil dari DB CSV cache, atau fetch per-NIK via Apps Script
-    let empRow = null;
-    // Coba dari dbData cache dulu (sudah di-load oleh Dashboard)
-    if (dbData.length > 0) {
-      empRow = dbData.find(r => normalizeNIK(r['NIK'] || '') === nik) || null;
-    }
-    // Fetch dari Apps Script per-NIK
-    if (!empRow) {
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        try { empRow = await api('employee', { nik }); break; }
-        catch(e) { if (attempt === 3) throw e; await new Promise(r => setTimeout(r, 1500 * attempt)); }
-      }
-    }
+    // Fetch summary (employee) + riwayat kelas (participation) secara paralel
+    const [empRow, myClasses] = await Promise.all([
+      (async () => {
+        if (dbData.length > 0) {
+          return dbData.find(r => normalizeNIK(r['NIK'] || '') === nik) || null;
+        }
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try { return await api('employee', { nik }); }
+          catch(e) { if (attempt === 3) throw e; await new Promise(r => setTimeout(r, 1500 * attempt)); }
+        }
+      })(),
+      api('participation', { nik }).catch(() => []),
+    ]);
 
     if (!empRow) {
       el.innerHTML = '<div class="empty-state"><div class="empty-icon">😕</div><div class="empty-text">Data learning untuk NIK ini belum tersedia.</div></div>';
       return;
     }
 
-    // Tampilkan summary dulu tanpa list kelas
-    el.innerHTML = buildLearningCard(empRow, []);
-
-    // Pasang tombol "Lihat Riwayat Kelas" yang fetch on-demand
-    const detailBtn = document.getElementById('btn-load-classes');
-    if (detailBtn) {
-      detailBtn.addEventListener('click', async () => {
-        detailBtn.disabled = true;
-        detailBtn.textContent = 'Memuat...';
-        try {
-          const myClasses = await api('participation', { nik });
-          const classSection = document.getElementById('class-detail-section');
-          if (classSection) classSection.innerHTML = buildClassTable(Array.isArray(myClasses) ? myClasses : []);
-        } catch(e) {
-          detailBtn.textContent = 'Gagal memuat. Coba lagi.';
-          detailBtn.disabled = false;
-        }
-      });
-    }
+    el.innerHTML = buildLearningCard(empRow, Array.isArray(myClasses) ? myClasses : []);
   } catch(e) {
     el.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Gagal memuat data: ' + e.message + '</div></div>';
   }
@@ -1540,15 +1522,10 @@ function buildLearningCard(sb, classes) {
       <a class="btn-report" href="https://docs.google.com/forms/d/e/1FAIpQLSf8U74xTaJLESZOAVU8qVGYPA-yK_9ypm8n6wyRMHTw_ihTRQ/viewform" target="_blank">📝 Laporkan Jam Belajar</a>
     </div>
 
-    <!-- Riwayat Kelas — on-demand -->
-    <div class="section-divider">Riwayat Kelas</div>
+    <!-- Riwayat Kelas — langsung tampil -->
+    <div class="section-divider">Riwayat Kelas${classes && classes.length > 0 ? ' (' + classes.length + ' kelas)' : ''}</div>
     <div id="class-detail-section">
-      <div style="text-align:center;padding:1.5rem;">
-        <button id="btn-load-classes" style="padding:0.75rem 2rem;background:var(--kg-grad2);color:white;border:none;border-radius:10px;font-size:0.9rem;font-weight:600;cursor:pointer;box-shadow:0 4px 16px rgba(21,101,192,0.25);">
-          📋 Lihat Riwayat Kelas Saya
-        </button>
-        <p style="font-size:0.75rem;color:var(--gray-400);margin-top:8px;">Klik untuk memuat riwayat kelas — proses 10–30 detik</p>
-      </div>
+      ${buildClassTable(classes || [])}
     </div>
   `;
 }
@@ -1600,24 +1577,9 @@ async function hrSearch() {
       return;
     }
 
-    el.innerHTML = buildLearningCard(empRow, []);
-
-    // Wire on-demand class loader
-    const detailBtn = document.getElementById('btn-load-classes');
-    if (detailBtn) {
-      detailBtn.addEventListener('click', async () => {
-        detailBtn.disabled = true;
-        detailBtn.textContent = 'Memuat...';
-        try {
-          const myClasses = await api('participation', { nik });
-          const classSection = document.getElementById('class-detail-section');
-          if (classSection) classSection.innerHTML = buildClassTable(Array.isArray(myClasses) ? myClasses : []);
-        } catch(e) {
-          detailBtn.textContent = 'Gagal memuat. Coba lagi.';
-          detailBtn.disabled = false;
-        }
-      });
-    }
+    // Load kelas sekaligus paralel
+    const myClasses = await api('participation', { nik }).catch(() => []);
+    el.innerHTML = buildLearningCard(empRow, Array.isArray(myClasses) ? myClasses : []);
   } catch(e) {
     el.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Error: ' + e.message + '</div></div>';
   }
