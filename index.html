@@ -736,6 +736,12 @@ const PUB_BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAn
 // ============================================================
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyU-C6tLHj0kMTmf4FPdq6YKLWCuIXHSqHDv-asIV-WTumQu1Ij_3NcML0nDE9N3x4/exec';
 
+// ── CSV URLs (published Google Sheet tabs) — tidak perlu Apps Script, tidak ada CORS ──
+// Ganti SHEET_ID dengan ID sheet Database kamu
+const SHEET_ID = '11T58NlMVg2NAiygt3IDl0nR-UZJoWZBLbui1TFZmpFE';
+const DB_CSV_URL      = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/export?format=csv&sheet=Database';
+const ACCESS_CSV_URL  = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ7QI6wzqkWrFL8U5hhLp_kI5HGG65nsU26_3Op34Q6AHORnNj_DjpwXacRaBvA2PqFZX0_wlfef4WW/pub?output=csv';
+
 // Fetch dari Apps Script — lebih cepat dari gviz/tq karena tidak terpengaruh formula
 async function api(action, extraParams, attempt=1) {
   // Build URL — simple GET, no custom headers (avoids CORS preflight)
@@ -791,28 +797,20 @@ async function api(action, extraParams, attempt=1) {
 // ============================================================
 const _cache = {};
 
-// Access sheet — langsung dari CSV (JAUH lebih cepat, tidak perlu Apps Script cold start)
-// URL ini adalah Published CSV dari tab Access sheet terpisah
-const ACCESS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ7QI6wzqkWrFL8U5hhLp_kI5HGG65nsU26_3Op34Q6AHORnNj_DjpwXacRaBvA2PqFZX0_wlfef4WW/pub?output=csv';
-
 async function fetchAccess() {
   if (_cache.access) return _cache.access;
+  // Langsung CSV — tidak lewat Apps Script, tidak ada CORS, instan
   try {
-    // Coba CSV langsung dulu — instant, tanpa cold start
     const res = await fetch(ACCESS_CSV_URL);
     if (res.ok) {
       const text = await res.text();
       if (!text.trimStart().toLowerCase().startsWith('<')) {
-        const data = parseCSV(text);
-        _cache.access = Array.isArray(data) ? data : [];
+        _cache.access = parseCSV(text);
         return _cache.access;
       }
     }
-  } catch(e) {
-    // CSV gagal — fallback ke Apps Script
-    console.warn('CSV access gagal, fallback ke Apps Script:', e.message);
-  }
-  // Fallback ke Apps Script
+  } catch(e) { console.warn('Access CSV gagal:', e.message); }
+  // Fallback Apps Script
   const data = await api('access');
   _cache.access = Array.isArray(data) ? data : [];
   return _cache.access;
@@ -1239,15 +1237,49 @@ async function loadMyLearning() {
   try {
     const nik = normalizeNIK(currentUser.nik);
 
-    // Fetch dari Database by NIK (bukan Search Bar yang dynamic)
+    // Ambil dari DB CSV cache, atau fetch per-NIK via Apps Script
     let empRow = null;
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    // Coba dari dbData cache dulu (sudah di-load oleh Dashboard)
+    if (dbData.length > 0) {
+      empRow = dbData.find(r => normalizeNIK(r['NIK'] || '') === nik) || null;
+    }
+    // Kalau belum ada di cache, load DB CSV dulu
+    if (!empRow) {
       try {
-        empRow = await api('employee', { nik });
-        break;
-      } catch(e) {
-        if (attempt === 3) throw e;
-        await new Promise(r => setTimeout(r, 1500 * attempt));
+        const res = await fetch(DB_CSV_URL);
+        if (res.ok) {
+          const text = await res.text();
+          if (!text.trimStart().toLowerCase().startsWith('<')) {
+            dbData = parseCSV(text);
+            // Normalize double spaces in headers
+            if (dbData.length > 0) {
+              const fixedKeys = {};
+              Object.keys(dbData[0]).forEach(k => {
+                const normalized = k.replace(/\s{2,}/g, ' ');
+                if (normalized !== k) fixedKeys[k] = normalized;
+              });
+              if (Object.keys(fixedKeys).length > 0) {
+                dbData = dbData.map(row => {
+                  const newRow = {...row};
+                  Object.entries(fixedKeys).forEach(([old, nw]) => {
+                    newRow[nw] = newRow[old]; delete newRow[old];
+                  });
+                  return newRow;
+                });
+              }
+            }
+            empRow = dbData.find(r => normalizeNIK(r['NIK'] || '') === nik) || null;
+          }
+        }
+      } catch(csvErr) {
+        console.warn('DB CSV gagal untuk employee, fallback Apps Script');
+      }
+    }
+    // Fallback ke Apps Script per-NIK kalau CSV gagal
+    if (!empRow) {
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try { empRow = await api('employee', { nik }); break; }
+        catch(e) { if (attempt === 3) throw e; await new Promise(r => setTimeout(r, 1500 * attempt)); }
       }
     }
 
@@ -1580,8 +1612,27 @@ async function hrSearch() {
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div class="loading-text">Mencari...</div></div>';
 
   try {
+    // Try CSV cache first, then Apps Script fallback
+    let empRowTemp = null;
+    if (dbData.length > 0) {
+      empRowTemp = dbData.find(r => normalizeNIK(r['NIK'] || '') === nik) || null;
+    }
+    if (!empRowTemp) {
+      try {
+        const res = await fetch(DB_CSV_URL);
+        if (res.ok) {
+          const text = await res.text();
+          if (!text.trimStart().toLowerCase().startsWith('<')) {
+            dbData = parseCSV(text);
+            empRowTemp = dbData.find(r => normalizeNIK(r['NIK'] || '') === nik) || null;
+          }
+        }
+      } catch(e) { /* fallback below */ }
+    }
+    if (!empRowTemp) empRowTemp = await api('employee', { nik });
+
     const [empRow, accRows] = await Promise.all([
-      api('employee', { nik }),
+      Promise.resolve(empRowTemp),
       accessData.length > 0 ? Promise.resolve(accessData) : fetchAccess(),
     ]);
     if (accessData.length === 0) accessData = accRows;
@@ -1638,9 +1689,41 @@ function canAccessLayer(myLayer, targetLayer) {
 // ============================================================
 async function loadDashboard() {
   const el = document.getElementById('dashboard-content');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div class="loading-text">Memuat data dashboard...</div></div>';
   try {
-    // Dashboard dihitung langsung dari tab Database. Recap tidak wajib dibaca.
-    if (dbData.length === 0) dbData = await api("database_full");
+    if (dbData.length === 0) {
+      // Gunakan CSV langsung — tidak ada CORS, tidak ada cold start
+      try {
+        const res = await fetch(DB_CSV_URL);
+        if (res.ok) {
+          const text = await res.text();
+          if (!text.trimStart().toLowerCase().startsWith('<')) {
+            dbData = parseCSV(text);
+            // Normalize header double spaces
+            if (dbData.length > 0) {
+              const fixedKeys = {};
+              Object.keys(dbData[0]).forEach(k => {
+                const normalized = k.replace(/\s{2,}/g, ' ');
+                if (normalized !== k) fixedKeys[k] = normalized;
+              });
+              if (Object.keys(fixedKeys).length > 0) {
+                dbData = dbData.map(row => {
+                  const newRow = {...row};
+                  Object.entries(fixedKeys).forEach(([old, nw]) => {
+                    newRow[nw] = newRow[old];
+                    delete newRow[old];
+                  });
+                  return newRow;
+                });
+              }
+            }
+          }
+        }
+      } catch(csvErr) {
+        console.warn('DB CSV gagal, fallback Apps Script:', csvErr.message);
+        dbData = await api('database_full');
+      }
+    }
     renderDashboard(el);
   } catch(e) {
     el.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Gagal memuat dashboard: ' + e.message + '</div></div>';
