@@ -1352,14 +1352,22 @@ function buildLearningCard(sb, classes) {
   const unit     = getCol(ref, 'Unit', 'UNIT') || '-';
   const direct   = getCol(ref, 'Directorate', 'DIRECTORATE') || '-';
 
-  // Summary dari Search Bar
-  const asLearner  = sb ? safeNum(getCol(sb, 'as Learner')) : 0;
-  const asTrainer  = sb ? safeNum(getCol(sb, 'as Trainer')) : 0;
-  const totalHours = sb ? safeNum(getCol(sb, 'Total Hours')) : 0;
-  const completion = sb ? (getCol(sb, 'Completion') || '-') : '-';
-  const target     = 18;
+  // Summary — baca dari Database
+  const allHours    = safeNum(getCol(sb, 'All Hours'));
+  const learningH   = safeNum(getCol(sb, 'Learning Hours'));
+  const asLearnerJ  = safeNum(getCol(sb, 'As Learner (Jam)'));
+  const asTrainerJ  = safeNum(getCol(sb, 'As Trainer (Jam)'));
+  const asLearnerK  = safeNum(getCol(sb, 'As Learner (Jumlah Kelas)'));
+  const asTrainerK  = safeNum(getCol(sb, 'As Trainer (Jumlah Kelas)'));
+  const totalHours  = asLearnerJ + asTrainerJ;
+  const m1          = safeNum(getCol(sb, 'First Mandatory'));
+  const m2          = safeNum(getCol(sb, 'Second Mandatory'));
+  const m3          = safeNum(getCol(sb, 'Third Mandatory'));
+  const mandDone    = [m1,m2,m3].filter(x => x > 0).length;
+  const completion  = mandDone >= 3 && learningH >= 18 ? 'Complete' : mandDone > 0 || learningH > 0 ? 'Incomplete' : '-';
+  const target      = 18;
 
-  // Mandatory topics dari Search Bar
+  // Mandatory topics
   const topics = [
     { key: 'Sustainability',        emoji: '🌱', mandatory: true  },
     { key: 'AI General',            emoji: '🤖', mandatory: true  },
@@ -1368,10 +1376,7 @@ function buildLearningCard(sb, classes) {
     { key: 'Video Production',      emoji: '🎬', mandatory: true  },
     { key: 'Creative Thinking',     emoji: '💡', mandatory: true  },
   ];
-
-  // Learning hours = as Learner (sesuai formula Search Bar)
-  const learningH = asLearner;
-  const progPct   = Math.min(100, Math.round((learningH / target) * 100));
+  const progPct   = Math.min(100, Math.round((asLearnerJ / target) * 100));
   const isComplete = completion.toString().toLowerCase().includes('complete') || learningH >= target;
   const progClass  = isComplete ? 'prog-complete' : learningH > 0 ? 'prog-progress' : 'prog-inactive';
   const progText   = isComplete ? '✅ Telah Memenuhi Target' : learningH > 0 ? '⏳ Sedang Berlangsung' : '❌ Belum Ada Aktivitas';
@@ -1386,8 +1391,9 @@ function buildLearningCard(sb, classes) {
   // Topic cards
   let topicsHTML = '';
   topics.forEach(({ key, emoji }) => {
-    const hrs   = sb ? safeNum(getCol(sb, key)) : 0;
-    const count = getClassCount(key);
+    // Nama kolom di Database: "Sustainability (jam)" dan "Sustainability (kelas)"
+    const hrs   = sb ? safeNum(getCol(sb, key + ' (jam)', key)) : 0;
+    const count = sb ? parseInt(getCol(sb, key + ' (kelas)') || 0) : 0;
     topicsHTML += `
       <div class="topic-pill">
         <div>
@@ -1401,14 +1407,16 @@ function buildLearningCard(sb, classes) {
   });
 
   // Others card
+  const othersHrs = sb ? safeNum(getCol(sb, 'Others (jam)', 'Others')) : 0;
+  const othersKelas = sb ? parseInt(getCol(sb, 'Others (kelas)') || 0) : 0;
   topicsHTML += `
     <div class="topic-pill">
       <div>
         <div class="topic-name">📦 Others</div>
-        <div class="topic-sessions" style="font-size:0.7rem;color:var(--gray-500);">Non-Mandatory · ${othersCount} kelas</div>
+        <div class="topic-sessions" style="font-size:0.7rem;color:var(--gray-500);">Non-Mandatory · ${othersKelas} kelas</div>
       </div>
       <div style="text-align:right;">
-        <div class="topic-hours" style="color:${othersHours>0?'var(--kg-mid)':'var(--gray-300)'};">${othersHours > 0 ? othersHours.toFixed(1)+' jam' : '-'}</div>
+        <div class="topic-hours" style="color:${othersHrs>0?'var(--kg-mid)':'var(--gray-300)'};">${othersHrs > 0 ? othersHrs.toFixed(1)+' jam' : '-'}</div>
       </div>
     </div>`;
 
@@ -1432,35 +1440,52 @@ function buildLearningCard(sb, classes) {
       <div class="learn-card">
         <div class="learn-icon">📖</div>
         <div class="learn-label">As Learner</div>
-        <div class="learn-val">${asLearner.toFixed(1)}</div>
-        <div class="learn-sub">jam (target: ${target})</div>
+        <div class="learn-val">${asLearnerJ.toFixed(1)}</div>
+        <div class="learn-sub">${asLearnerK} kelas · target ${target} jam</div>
       </div>
       <div class="learn-card">
         <div class="learn-icon">🎤</div>
         <div class="learn-label">As Trainer</div>
-        <div class="learn-val">${asTrainer.toFixed(1)}</div>
-        <div class="learn-sub">jam</div>
+        <div class="learn-val">${asTrainerJ.toFixed(1)}</div>
+        <div class="learn-sub">${asTrainerK} kelas</div>
       </div>
       <div class="learn-card">
         <div class="learn-icon">⏱️</div>
-        <div class="learn-label">Total Hours</div>
-        <div class="learn-val">${totalHours.toFixed(1)}</div>
-        <div class="learn-sub">learner + trainer</div>
+        <div class="learn-label">All Hours</div>
+        <div class="learn-val">${allHours.toFixed(1)}</div>
+        <div class="learn-sub">termasuk 3 mandatory</div>
       </div>
-      <div class="learn-card" style="background:${isComplete?'#d1fae5':'white'}">
-        <div class="learn-icon">${isComplete?'✅':'⏳'}</div>
-        <div class="learn-label">Status</div>
-        <div class="learn-val" style="font-size:1rem;color:${isComplete?'var(--success)':'var(--warning)'};">${completion}</div>
-        <div class="learn-sub">completion</div>
+      <div class="learn-card">
+        <div class="learn-icon">📚</div>
+        <div class="learn-label">Learning Hours</div>
+        <div class="learn-val">${learningH.toFixed(1)}</div>
+        <div class="learn-sub">di luar 3 mandatory pertama</div>
       </div>
-
+      <div class="learn-card" style="background:${m1>0?'#eff6ff':'white'}">
+        <div class="learn-icon">🏅</div>
+        <div class="learn-label">Mandatory 1</div>
+        <div class="learn-val" style="font-size:1.1rem;color:${m1>0?'var(--kg-mid)':'var(--gray-300)'};">${m1>0?m1.toFixed(1)+' jam':'-'}</div>
+        <div class="learn-sub">${m1>0?'selesai':'belum'}</div>
+      </div>
+      <div class="learn-card" style="background:${m2>0?'#eff6ff':'white'}">
+        <div class="learn-icon">🏅</div>
+        <div class="learn-label">Mandatory 2</div>
+        <div class="learn-val" style="font-size:1.1rem;color:${m2>0?'var(--kg-mid)':'var(--gray-300)'};">${m2>0?m2.toFixed(1)+' jam':'-'}</div>
+        <div class="learn-sub">${m2>0?'selesai':'belum'}</div>
+      </div>
+      <div class="learn-card" style="background:${m3>0?'#eff6ff':'white'}">
+        <div class="learn-icon">🏅</div>
+        <div class="learn-label">Mandatory 3</div>
+        <div class="learn-val" style="font-size:1.1rem;color:${m3>0?'var(--kg-mid)':'var(--gray-300)'};">${m3>0?m3.toFixed(1)+' jam':'-'}</div>
+        <div class="learn-sub">${m3>0?'selesai':'belum'}</div>
+      </div>
     </div>
 
     <!-- Progress Bar -->
     <div style="margin-bottom:24px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-        <span style="font-size:0.8rem;font-weight:600;color:var(--gray-700);">Progress Learning Hours (as Learner)</span>
-        <span style="font-size:0.8rem;color:var(--kg-mid);font-weight:700;">${learningH.toFixed(1)} / ${target} jam (${progPct}%)</span>
+        <span style="font-size:0.8rem;font-weight:600;color:var(--gray-700);">Progress As Learner</span>
+        <span style="font-size:0.8rem;color:var(--kg-mid);font-weight:700;">${asLearnerJ.toFixed(1)} / ${target} jam (${progPct}%)</span>
       </div>
       <div class="prog-bar" style="height:10px;">
         <div class="prog-fill ${progPct>=100?'green':progPct>0?'':'red'}" style="width:${progPct}%"></div>
