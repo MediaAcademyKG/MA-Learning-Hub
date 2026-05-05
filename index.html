@@ -1232,39 +1232,7 @@ async function loadMyLearning() {
     if (dbData.length > 0) {
       empRow = dbData.find(r => normalizeNIK(r['NIK'] || '') === nik) || null;
     }
-    // Kalau belum ada di cache, load DB CSV dulu
-    if (!empRow) {
-      try {
-        const res = await fetch(DB_CSV_URL);
-        if (res.ok) {
-          const text = await res.text();
-          if (!text.trimStart().toLowerCase().startsWith('<')) {
-            dbData = parseCSV(text);
-            // Normalize double spaces in headers
-            if (dbData.length > 0) {
-              const fixedKeys = {};
-              Object.keys(dbData[0]).forEach(k => {
-                const normalized = k.replace(/\s{2,}/g, ' ');
-                if (normalized !== k) fixedKeys[k] = normalized;
-              });
-              if (Object.keys(fixedKeys).length > 0) {
-                dbData = dbData.map(row => {
-                  const newRow = {...row};
-                  Object.entries(fixedKeys).forEach(([old, nw]) => {
-                    newRow[nw] = newRow[old]; delete newRow[old];
-                  });
-                  return newRow;
-                });
-              }
-            }
-            empRow = dbData.find(r => normalizeNIK(r['NIK'] || '') === nik) || null;
-          }
-        }
-      } catch(csvErr) {
-        console.info('DB CSV: fallback ke Apps Script untuk employee');
-      }
-    }
-    // Fallback ke Apps Script per-NIK kalau CSV gagal
+    // Fetch dari Apps Script per-NIK
     if (!empRow) {
       for (let attempt = 1; attempt <= 3; attempt++) {
         try { empRow = await api('employee', { nik }); break; }
@@ -1606,18 +1574,6 @@ async function hrSearch() {
     if (dbData.length > 0) {
       empRowTemp = dbData.find(r => normalizeNIK(r['NIK'] || '') === nik) || null;
     }
-    if (!empRowTemp) {
-      try {
-        const res = await fetch(DB_CSV_URL);
-        if (res.ok) {
-          const text = await res.text();
-          if (!text.trimStart().toLowerCase().startsWith('<')) {
-            dbData = parseCSV(text);
-            empRowTemp = dbData.find(r => normalizeNIK(r['NIK'] || '') === nik) || null;
-          }
-        }
-      } catch(e) { /* fallback below */ }
-    }
     if (!empRowTemp) empRowTemp = await api('employee', { nik });
 
     const [empRow, accRows] = await Promise.all([
@@ -1681,37 +1637,7 @@ async function loadDashboard() {
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div class="loading-text">Memuat data dashboard...</div></div>';
   try {
     if (dbData.length === 0) {
-      // Gunakan CSV langsung — tidak ada CORS, tidak ada cold start
-      try {
-        const res = await fetch(DB_CSV_URL);
-        if (res.ok) {
-          const text = await res.text();
-          if (!text.trimStart().toLowerCase().startsWith('<')) {
-            dbData = parseCSV(text);
-            // Normalize header double spaces
-            if (dbData.length > 0) {
-              const fixedKeys = {};
-              Object.keys(dbData[0]).forEach(k => {
-                const normalized = k.replace(/\s{2,}/g, ' ');
-                if (normalized !== k) fixedKeys[k] = normalized;
-              });
-              if (Object.keys(fixedKeys).length > 0) {
-                dbData = dbData.map(row => {
-                  const newRow = {...row};
-                  Object.entries(fixedKeys).forEach(([old, nw]) => {
-                    newRow[nw] = newRow[old];
-                    delete newRow[old];
-                  });
-                  return newRow;
-                });
-              }
-            }
-          }
-        }
-      } catch(csvErr) {
-        console.info('DB CSV: fallback ke Apps Script:', csvErr.message);
-        dbData = await api('database_full');
-      }
+      dbData = await api('database_full');
     }
     renderDashboard(el);
   } catch(e) {
