@@ -734,7 +734,7 @@ const PUB_BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAn
 // CONFIG — Apps Script Web App
 // Setelah deploy Apps Script, ganti URL di bawah ini
 // ============================================================
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxURErkPhqnvWQo5rKR7wblLn8qqh8HI1kf4T2AY-XdszGEuLpu25lLI5_Z37eMR9E/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyU-C6tLHj0kMTmf4FPdq6YKLWCuIXHSqHDv-asIV-WTumQu1Ij_3NcML0nDE9N3x4/exec';
 
 // Fetch dari Apps Script — lebih cepat dari gviz/tq karena tidak terpengaruh formula
 async function api(action, extraParams, attempt=1) {
@@ -791,8 +791,28 @@ async function api(action, extraParams, attempt=1) {
 // ============================================================
 const _cache = {};
 
+// Access sheet — langsung dari CSV (JAUH lebih cepat, tidak perlu Apps Script cold start)
+// URL ini adalah Published CSV dari tab Access sheet terpisah
+const ACCESS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ7QI6wzqkWrFL8U5hhLp_kI5HGG65nsU26_3Op34Q6AHORnNj_DjpwXacRaBvA2PqFZX0_wlfef4WW/pub?output=csv';
+
 async function fetchAccess() {
   if (_cache.access) return _cache.access;
+  try {
+    // Coba CSV langsung dulu — instant, tanpa cold start
+    const res = await fetch(ACCESS_CSV_URL);
+    if (res.ok) {
+      const text = await res.text();
+      if (!text.trimStart().toLowerCase().startsWith('<')) {
+        const data = parseCSV(text);
+        _cache.access = Array.isArray(data) ? data : [];
+        return _cache.access;
+      }
+    }
+  } catch(e) {
+    // CSV gagal — fallback ke Apps Script
+    console.warn('CSV access gagal, fallback ke Apps Script:', e.message);
+  }
+  // Fallback ke Apps Script
   const data = await api('access');
   _cache.access = Array.isArray(data) ? data : [];
   return _cache.access;
@@ -1343,39 +1363,33 @@ function getCol(row, ...keys) {
 // BUILD LEARNING CARD — dari Search Bar + Learning Participation
 // ============================================================
 function buildLearningCard(sb, classes) {
-  // DEBUG — log semua kolom yang diterima (lihat Browser Console > F12)
+  // DEBUG — buka F12 > Console untuk lihat nama kolom yang diterima
   if (sb) {
     console.group('[KG Portal] Raw keys dari Apps Script:');
-    console.log('Semua kolom:', Object.keys(sb));
+    console.log('Keys:', Object.keys(sb));
     console.table({
-      'All Hours': sb['All Hours'],
-      'Learning Hours': sb['Learning Hours'],
-      'As Learner (Jam)': sb['As Learner (Jam)'],
-      'As Trainer (Jam)': sb['As Trainer (Jam)'],
+      'All Hours': sb['All Hours'], 'Learning Hours': sb['Learning Hours'],
+      'As Learner (Jam)': sb['As Learner (Jam)'], 'As Trainer (Jam)': sb['As Trainer (Jam)'],
       'As Learner (Jumlah Kelas)': sb['As Learner (Jumlah Kelas)'],
       'As Trainer (Jumlah Kelas)': sb['As Trainer (Jumlah Kelas)'],
       'First Mandatory': sb['First Mandatory'],
-      'Second Mandatory': sb['Second Mandatory'],
-      'Third Mandatory': sb['Third Mandatory'],
       'Sustainability (jam)': sb['Sustainability (jam)'],
       'AI General  (jam)': sb['AI General  (jam)'],
       'Others (jam)': sb['Others (jam)'],
-      'Others (kelas)': sb['Others (kelas)'],
     });
     console.groupEnd();
   }
   // Info karyawan — dari Search Bar atau dari baris pertama kelas
   const ref      = sb || classes[0] || {};
-  const name     = getCol(ref, 'NAMA', 'Name', 'nama') || '-';  // Database uses NAMA
+  const name     = getCol(ref, 'NAMA', 'Name', 'nama') || '-';
   const nik      = getCol(ref, 'NIK', 'nik') || '-';
-  const status   = getCol(ref, 'Status') || '-';
-  const position = getCol(ref, 'Position') || '-';
-  const unit     = getCol(ref, 'Unit') || '-';
-  const direct   = getCol(ref, 'Directorate') || '-';
+  const status   = getCol(ref, 'Status', 'STATUS') || '-';
+  const position = getCol(ref, 'Position', 'POSITION') || '-';
+  const unit     = getCol(ref, 'Unit', 'UNIT') || '-';
+  const direct   = getCol(ref, 'Directorate', 'DIRECTORATE') || '-';
 
-  // Summary — baca dari Database
+  // Summary — baca dari Database (exact column names dari header sheet)
   const allHours    = safeNum(getCol(sb, 'All Hours'));
-  // As Learner/Trainer — coba berbagai variasi nama kolom dari sheet
   const asLearnerJ  = safeNum(getCol(sb, 'As Learner (Jam)'));
   const asTrainerJ  = safeNum(getCol(sb, 'As Trainer (Jam)'));
   const asLearnerK  = safeNum(getCol(sb, 'As Learner (Jumlah Kelas)'));
@@ -1384,11 +1398,9 @@ function buildLearningCard(sb, classes) {
   const m2          = safeNum(getCol(sb, 'Second Mandatory'));
   const m3          = safeNum(getCol(sb, 'Third Mandatory'));
   const mandDone    = [m1,m2,m3].filter(x => x > 0).length;
-  // BUG FIX: Selalu baca 'Learning Hours' langsung dari sheet — sheet sudah hitung dengan benar
-  // Jangan fallback ke allHours karena itu termasuk 3 mandatory pertama
-  // FIX: Baca Learning Hours langsung dari kolom sheet (sudah dihitung benar oleh formula sheet)
-  // Fallback ke allHours - mandatory HANYA jika kolom benar-benar kosong/tidak ada
-  const _lhRaw = getCol(sb, 'Learning Hours', 'learning hours', 'LEARNING HOURS');
+  // BUG FIX: Baca Learning Hours langsung dari kolom — sheet sudah hitung benar
+  // Jangan pakai || fallback karena nilai 0 dianggap falsy
+  const _lhRaw    = getCol(sb, 'Learning Hours');
   const learningH = (_lhRaw !== '' && _lhRaw !== null && _lhRaw !== undefined)
     ? safeNum(_lhRaw)
     : Math.max(0, allHours - (m1 + m2 + m3));
@@ -1421,16 +1433,10 @@ function buildLearningCard(sb, classes) {
   let topicsHTML = '';
   topics.forEach(({ key, emoji }) => {
     // Nama kolom di Database: "Sustainability (jam)" dan "Sustainability (kelas)"
-    // Exact column names from Database tab header
-    // Note: "AI General  (jam)" has double space — try both
-    const hrs   = sb ? safeNum(getCol(sb,
-      key + ' (jam)',   // standard: "Sustainability (jam)"
-      key + '  (jam)'  // double space: "AI General  (jam)"
-    )) : 0;
-    const count = sb ? safeNum(getCol(sb,
-      key + ' (kelas)',
-      key + '  (kelas)'  // double space variant
-    )) : 0;
+    // Apps Script sudah normalize double space → single space di normalizeHeaders()
+    // Sehingga "AI General  (jam)" → "AI General (jam)" secara konsisten
+    const hrs   = sb ? safeNum(getCol(sb, key + ' (jam)')) : 0;
+    const count = sb ? safeNum(getCol(sb, key + ' (kelas)')) : 0;
     topicsHTML += `
       <div class="topic-pill">
         <div>
