@@ -739,8 +739,9 @@ const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyU-C6tLHj0kMTm
 // ── CSV URLs (published Google Sheet tabs) — tidak perlu Apps Script, tidak ada CORS ──
 // Ganti SHEET_ID dengan ID sheet Database kamu
 const SHEET_ID = '11T58NlMVg2NAiygt3IDl0nR-UZJoWZBLbui1TFZmpFE';
-const DB_CSV_URL      = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/export?format=csv&sheet=Database';
-const ACCESS_CSV_URL  = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ7QI6wzqkWrFL8U5hhLp_kI5HGG65nsU26_3Op34Q6AHORnNj_DjpwXacRaBvA2PqFZX0_wlfef4WW/pub?output=csv';
+// DB CSV — gviz/tq format: cukup "Anyone with link can view", tidak perlu publish to web
+const DB_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAnkC8gLRwI8QsiKzbaaQV_w577RvjKKMRfQAw96ZCt0cNBfiIuCtqtm4fxzH8h5-X_0/pub?gid=257024260&single=true&output=csv';
+const ACCESS_CSV_URL  = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAnkC8gLRwI8QsiKzbaaQV_w577RvjKKMRfQAw96ZCt0cNBfiIuCtqtm4fxzH8h5-X_0/pub?gid=185308502&single=true&output=csv';
 
 // Fetch dari Apps Script — lebih cepat dari gviz/tq karena tidak terpengaruh formula
 async function api(action, extraParams, attempt=1) {
@@ -799,18 +800,6 @@ const _cache = {};
 
 async function fetchAccess() {
   if (_cache.access) return _cache.access;
-  // Langsung CSV — tidak lewat Apps Script, tidak ada CORS, instan
-  try {
-    const res = await fetch(ACCESS_CSV_URL);
-    if (res.ok) {
-      const text = await res.text();
-      if (!text.trimStart().toLowerCase().startsWith('<')) {
-        _cache.access = parseCSV(text);
-        return _cache.access;
-      }
-    }
-  } catch(e) { console.warn('Access CSV gagal:', e.message); }
-  // Fallback Apps Script
   const data = await api('access');
   _cache.access = Array.isArray(data) ? data : [];
   return _cache.access;
@@ -1272,7 +1261,7 @@ async function loadMyLearning() {
           }
         }
       } catch(csvErr) {
-        console.warn('DB CSV gagal untuk employee, fallback Apps Script');
+        console.info('DB CSV: fallback ke Apps Script untuk employee');
       }
     }
     // Fallback ke Apps Script per-NIK kalau CSV gagal
@@ -1400,7 +1389,7 @@ function buildLearningCard(sb, classes) {
     console.group('[KG Portal] Raw keys dari Apps Script:');
     console.log('Keys:', Object.keys(sb));
     console.table({
-      'All Hours': sb['All Hours'], 'Learning Hours': sb['Learning Hours'],
+      'All Learning Hours': sb['All Learning Hours'], 'Learning Hours (tanpa 3 mandatory pertama)': sb['Learning Hours (tanpa 3 mandatory pertama)'],
       'As Learner (Jam)': sb['As Learner (Jam)'], 'As Trainer (Jam)': sb['As Trainer (Jam)'],
       'As Learner (Jumlah Kelas)': sb['As Learner (Jumlah Kelas)'],
       'As Trainer (Jumlah Kelas)': sb['As Trainer (Jumlah Kelas)'],
@@ -1421,7 +1410,8 @@ function buildLearningCard(sb, classes) {
   const direct   = getCol(ref, 'Directorate', 'DIRECTORATE') || '-';
 
   // Summary — baca dari Database (exact column names dari header sheet)
-  const allHours    = safeNum(getCol(sb, 'All Hours'));
+  // Exact column names from Database tab
+  const allHours    = safeNum(getCol(sb, 'All Learning Hours', 'All Hours'));
   const asLearnerJ  = safeNum(getCol(sb, 'As Learner (Jam)'));
   const asTrainerJ  = safeNum(getCol(sb, 'As Trainer (Jam)'));
   const asLearnerK  = safeNum(getCol(sb, 'As Learner (Jumlah Kelas)'));
@@ -1430,9 +1420,8 @@ function buildLearningCard(sb, classes) {
   const m2          = safeNum(getCol(sb, 'Second Mandatory'));
   const m3          = safeNum(getCol(sb, 'Third Mandatory'));
   const mandDone    = [m1,m2,m3].filter(x => x > 0).length;
-  // BUG FIX: Baca Learning Hours langsung dari kolom — sheet sudah hitung benar
-  // Jangan pakai || fallback karena nilai 0 dianggap falsy
-  const _lhRaw    = getCol(sb, 'Learning Hours');
+  // Learning Hours = All Hours dikurangi 3 mandatory pertama (sudah dihitung di sheet)
+  const _lhRaw    = getCol(sb, 'Learning Hours (tanpa 3 mandatory pertama)', 'Learning Hours');
   const learningH = (_lhRaw !== '' && _lhRaw !== null && _lhRaw !== undefined)
     ? safeNum(_lhRaw)
     : Math.max(0, allHours - (m1 + m2 + m3));
@@ -1720,7 +1709,7 @@ async function loadDashboard() {
           }
         }
       } catch(csvErr) {
-        console.warn('DB CSV gagal, fallback Apps Script:', csvErr.message);
+        console.info('DB CSV: fallback ke Apps Script:', csvErr.message);
         dbData = await api('database_full');
       }
     }
@@ -1746,18 +1735,18 @@ function renderDashboard(el) {
   // "Belum Aktif" = All Hours == 0 (sesuai definisi tab Recap di Google Sheet)
   // "In Progress" = sudah ada aktivitas tapi Learning Hours < 18
   // "Selesai" = Learning Hours >= 18
-  const noActivity = validData.filter(r => safeNum(getCol(r, 'All Hours', 'All hours')) === 0).length;
-  const completed  = validData.filter(r => safeNum(getCol(r, 'Learning Hours', 'Learning hours')) >= 18).length;
+  const noActivity = validData.filter(r => safeNum(getCol(r, 'All Learning Hours', 'All Hours')) === 0).length;
+  const completed  = validData.filter(r => safeNum(getCol(r, 'Learning Hours (tanpa 3 mandatory pertama)', 'Learning Hours')) >= 18).length;
   const inProgress = validData.filter(r => {
-    const ah = safeNum(getCol(r, 'All Hours', 'All hours', 'all hours', 'TOTAL'));
-    const lh = safeNum(getCol(r, 'Learning Hours'));
+    const ah = safeNum(getCol(r, 'All Learning Hours', 'All Hours'));
+    const lh = safeNum(getCol(r, 'Learning Hours (tanpa 3 mandatory pertama)', 'Learning Hours'));
     return ah > 0 && lh < 18;
   }).length;
-  const totalHours = validData.reduce((s,r) => s + safeNum(getCol(r, 'Learning Hours')), 0);
+  const totalHours = validData.reduce((s,r) => s + safeNum(getCol(r, 'Learning Hours (tanpa 3 mandatory pertama)', 'Learning Hours')), 0);
 
   // Mandatory: hitung dari 6 topik aktual pakai safeNum + getCol (handle spasi & #N/A)
   const MAND_TOPICS = ['Sustainability','Video Production','AI General','AI for Newsroom','AI Media Intelligence','Creative Thinking'];
-  const getTopicH   = (r, t) => safeNum(getCol(r, t, t + ' (jam)', t + '  (jam)', t.toLowerCase()));
+  const getTopicH   = (r, t) => safeNum(getCol(r, t + ' (jam)', t + '  (jam)', t));
   const countMand   = r => MAND_TOPICS.filter(t => getTopicH(r, t) > 0).length;
   const mand3plus = validData.filter(r => countMand(r) >= 3).length;
   const mand2     = validData.filter(r => countMand(r) === 2).length;
@@ -1769,8 +1758,8 @@ function renderDashboard(el) {
     const unit = getCol(r, 'Unit', 'UNIT') || 'Lainnya';
     if (!units[unit]) units[unit] = { total:0, noAct:0, inProg:0, comp:0, mand0:0, mand1:0, mand2:0, mand3p:0 };
     units[unit].total++;
-    const ah = safeNum(getCol(r, 'All Hours', 'All hours', 'all hours', 'TOTAL'));
-    const lh = safeNum(getCol(r, 'Learning Hours'));
+    const ah = safeNum(getCol(r, 'All Learning Hours', 'All Hours'));
+    const lh = safeNum(getCol(r, 'Learning Hours (tanpa 3 mandatory pertama)', 'Learning Hours'));
     if (ah === 0) units[unit].noAct++;        // Belum Aktif = All Hours == 0
     else if (lh >= 18) units[unit].comp++;    // Selesai = Learning Hours >= 18
     else units[unit].inProg++;                // In Progress = ada aktivitas, LH < 18
