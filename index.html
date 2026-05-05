@@ -738,43 +738,51 @@ const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzfgN1WY1rCCxwo
 
 // Fetch dari Apps Script — lebih cepat dari gviz/tq karena tidak terpengaruh formula
 async function api(action, extraParams, attempt=1) {
+  // Build URL — simple GET, no custom headers (avoids CORS preflight)
   const url = new URL(APPS_SCRIPT_URL);
   url.searchParams.set('action', action);
-  if (extraParams) Object.entries(extraParams).forEach(([k,v]) => url.searchParams.set(k, v));
+  if (extraParams) {
+    Object.entries(extraParams).forEach(([k,v]) => url.searchParams.set(k, String(v)));
+  }
 
+  // Apps Script dari GitHub Pages: fetch simple GET tanpa header custom
+  // Browser akan follow redirect ke script.googleusercontent.com secara otomatis
   let res;
   try {
-    // redirect:'follow' penting — Apps Script selalu redirect sekali sebelum respond
-    // Tanpa ini browser block karena CORS pada redirect URL
-    res = await fetch(url.toString(), {
-      redirect: 'follow',
-      mode: 'cors',
-    });
+    res = await fetch(url.toString());  // default: GET, follow redirect, omit credentials
   } catch(e) {
-    // CORS/network error — retry sekali setelah 2 detik
     if (attempt < 3) {
       await new Promise(r => setTimeout(r, 2000 * attempt));
       return api(action, extraParams, attempt + 1);
     }
-    throw new Error('Tidak dapat terhubung ke server Apps Script. Periksa koneksi internet.');
+    throw new Error('Tidak dapat terhubung ke Apps Script. Periksa koneksi internet.');
   }
 
-  // Kalau redirect ke Google login = deployment setting salah
-  if (res.redirected && res.url.includes('accounts.google.com')) {
-    throw new Error('Apps Script perlu di-deploy ulang dengan "Who has access: Anyone".');
+  // Cek redirect ke Google login (deployment belum "Anyone")
+  if (res.url && res.url.includes('accounts.google.com')) {
+    throw new Error('Apps Script perlu di-deploy ulang: Who has access = Anyone.');
   }
 
-  if (!res.ok) throw new Error('Gagal memuat data (HTTP ' + res.status + ')');
+  if (!res.ok) {
+    if (attempt < 3) {
+      await new Promise(r => setTimeout(r, 2000 * attempt));
+      return api(action, extraParams, attempt + 1);
+    }
+    throw new Error('Error HTTP ' + res.status + ' dari Apps Script.');
+  }
 
   let json;
   try {
-    const text = await res.text();
-    json = JSON.parse(text);
+    json = await res.json();
   } catch(e) {
-    throw new Error('Response tidak valid dari Apps Script. Coba refresh halaman.');
+    if (attempt < 3) {
+      await new Promise(r => setTimeout(r, 2000 * attempt));
+      return api(action, extraParams, attempt + 1);
+    }
+    throw new Error('Response tidak valid dari Apps Script.');
   }
 
-  if (json && !json.success) throw new Error(json.error || 'Server error');
+  if (json && json.success === false) throw new Error(json.error || 'Server error');
   return json ? json.data : null;
 }
 
@@ -1032,11 +1040,11 @@ document.addEventListener('DOMContentLoaded', () => {
     secs++;
     if (secs < 10) {
       el.textContent = 'Menghubungkan ke server... (' + secs + 's)';
-    } else if (secs < 25) {
-      el.textContent = '⏳ Masih loading... (' + secs + 's) — Apps Script sedang warm up';
+    } else if (secs < 60) {
+      el.textContent = '⏳ Sedang menghubungkan... (' + secs + 's)';
       el.style.color = '#f59e0b';
     } else {
-      el.textContent = '⚠ Loading lama. Coba refresh halaman.';
+      el.textContent = '⚠ Koneksi lambat. Coba refresh halaman.';
       el.style.color = '#f87171';
       clearInterval(timer);
     }
@@ -1574,6 +1582,11 @@ async function loadDashboard() {
 
 function renderDashboard(el) {
   // Hanya hitung baris dengan NIK valid
+  // Debug: log column names dari baris pertama untuk diagnosa
+  if (dbData.length > 0) {
+    console.log('[Dashboard] Column names in DB:', Object.keys(dbData[0]).join(', '));
+  }
+
   const validData = dbData.filter(r => {
     const nik = (r['NIK'] || r['No NIK'] || '').toString().trim();
     return nik !== '' && nik.toLowerCase() !== 'nik' && nik.toLowerCase() !== 'no nik';
@@ -1583,10 +1596,10 @@ function renderDashboard(el) {
   // "Belum Aktif" = All Hours == 0 (sesuai definisi tab Recap di Google Sheet)
   // "In Progress" = sudah ada aktivitas tapi Learning Hours < 18
   // "Selesai" = Learning Hours >= 18
-  const noActivity = validData.filter(r => safeNum(getCol(r, 'All Hours')) === 0).length;
-  const completed  = validData.filter(r => safeNum(getCol(r, 'Learning Hours')) >= 18).length;
+  const noActivity = validData.filter(r => safeNum(getCol(r, 'All Hours', 'All hours')) === 0).length;
+  const completed  = validData.filter(r => safeNum(getCol(r, 'Learning Hours', 'Learning hours')) >= 18).length;
   const inProgress = validData.filter(r => {
-    const ah = safeNum(getCol(r, 'All Hours'));
+    const ah = safeNum(getCol(r, 'All Hours', 'All hours', 'all hours', 'TOTAL'));
     const lh = safeNum(getCol(r, 'Learning Hours'));
     return ah > 0 && lh < 18;
   }).length;
@@ -1594,7 +1607,7 @@ function renderDashboard(el) {
 
   // Mandatory: hitung dari 6 topik aktual pakai safeNum + getCol (handle spasi & #N/A)
   const MAND_TOPICS = ['Sustainability','Video Production','AI General','AI for Newsroom','AI Media Intelligence','Creative Thinking'];
-  const getTopicH   = (r, t) => safeNum(getCol(r, t + ' (jam)', t + '  (jam)', t));
+  const getTopicH   = (r, t) => safeNum(getCol(r, t, t + ' (jam)', t + '  (jam)', t.toLowerCase()));
   const countMand   = r => MAND_TOPICS.filter(t => getTopicH(r, t) > 0).length;
   const mand3plus = validData.filter(r => countMand(r) >= 3).length;
   const mand2     = validData.filter(r => countMand(r) === 2).length;
@@ -1606,7 +1619,7 @@ function renderDashboard(el) {
     const unit = getCol(r, 'Unit', 'UNIT') || 'Lainnya';
     if (!units[unit]) units[unit] = { total:0, noAct:0, inProg:0, comp:0, mand0:0, mand1:0, mand2:0, mand3p:0 };
     units[unit].total++;
-    const ah = safeNum(getCol(r, 'All Hours'));
+    const ah = safeNum(getCol(r, 'All Hours', 'All hours', 'all hours', 'TOTAL'));
     const lh = safeNum(getCol(r, 'Learning Hours'));
     if (ah === 0) units[unit].noAct++;        // Belum Aktif = All Hours == 0
     else if (lh >= 18) units[unit].comp++;    // Selesai = Learning Hours >= 18
