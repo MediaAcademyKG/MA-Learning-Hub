@@ -734,16 +734,36 @@ const PUB_BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAn
 // CONFIG — Apps Script Web App
 // Setelah deploy Apps Script, ganti URL di bawah ini
 // ============================================================
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxkIzStA8Z86PzdDj_GHSrsnrQE8pscSMwxKbmsf6AZ1M-p8HKDnQqrLOAV5T1xR2g/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzfgN1WY1rCCxwoRyvs1PgckH8F_HG50LyaADySDkWhsFVQlsi5GKs27nOss3C96vU/exec';
 
 // Fetch dari Apps Script — lebih cepat dari gviz/tq karena tidak terpengaruh formula
-async function api(action, extraParams) {
+async function api(action, extraParams, attempt=1) {
   const url = new URL(APPS_SCRIPT_URL);
   url.searchParams.set('action', action);
   if (extraParams) Object.entries(extraParams).forEach(([k,v]) => url.searchParams.set(k, v));
-  const res = await fetch(url.toString());
+  // Apps Script cold start bisa 10-30 detik — jangan timeout terlalu cepat
+  let res;
+  try {
+    res = await fetch(url.toString());
+  } catch(e) {
+    // Retry sekali pada network error
+    if (attempt < 2) {
+      await new Promise(r => setTimeout(r, 1500));
+      return api(action, extraParams, 2);
+    }
+    throw new Error('Tidak dapat terhubung ke server. Periksa koneksi internet.');
+  }
+  // Apps Script redirect (302) = belum deploy sebagai Anyone
+  if (res.status === 302 || res.redirected && res.url.includes('accounts.google.com')) {
+    throw new Error('Apps Script perlu di-deploy ulang: pilih "Who has access: Anyone".');
+  }
   if (!res.ok) throw new Error('HTTP ' + res.status);
-  const json = await res.json();
+  let json;
+  try {
+    json = await res.json();
+  } catch(e) {
+    throw new Error('Response bukan JSON — periksa deployment Apps Script.');
+  }
   if (!json.success) throw new Error(json.error || 'Server error');
   return json.data;
 }
@@ -976,6 +996,10 @@ let _preloadPromise = null;
 
 function startPreload() {
   if (_preloadPromise) return;
+  // Panggil warmup dulu — Apps Script akan pre-cache database & access
+  // Ini "memanaskan" server sebelum login diklik
+  api('warmup', {}).catch(() => {}); // fire-and-forget, tidak tunggu hasilnya
+
   _preloadPromise = fetchAccess()
     .then(data => { accessData = data; })
     .catch(() => {});
@@ -988,8 +1012,28 @@ startPreload();
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('preload-status');
   if (!el) return;
-  el.textContent = 'Memuat data...';
+
+  // Show elapsed time so user knows it's working (Apps Script cold start = 10-30s)
+  let secs = 0;
+  el.textContent = 'Menghubungkan ke server...';
+  el.style.color = '#94a3b8';
+
+  const timer = setInterval(() => {
+    secs++;
+    if (secs < 10) {
+      el.textContent = 'Menghubungkan ke server... (' + secs + 's)';
+    } else if (secs < 25) {
+      el.textContent = '⏳ Masih loading... (' + secs + 's) — Apps Script sedang warm up';
+      el.style.color = '#f59e0b';
+    } else {
+      el.textContent = '⚠ Loading lama. Coba refresh halaman.';
+      el.style.color = '#f87171';
+      clearInterval(timer);
+    }
+  }, 1000);
+
   if (_preloadPromise) _preloadPromise.then(() => {
+    clearInterval(timer);
     if (accessData && accessData.length > 0) {
       el.textContent = 'Siap ✔  Silakan masukkan NIK';
       el.style.color = '#4ade80';
@@ -998,6 +1042,7 @@ document.addEventListener('DOMContentLoaded', () => {
       el.style.color = '#f87171';
     }
   }).catch(() => {
+    clearInterval(timer);
     el.textContent = '⚠ Gagal memuat. Refresh halaman.';
     el.style.color = '#f87171';
   });
