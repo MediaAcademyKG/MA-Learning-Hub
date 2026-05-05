@@ -734,7 +734,7 @@ const PUB_BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAn
 // CONFIG — Apps Script Web App
 // Setelah deploy Apps Script, ganti URL di bawah ini
 // ============================================================
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyCuhVHSv9Pegg59naAiYEVvhSY9H2p8mrUAhlCWnUcOrlE-1cRNLx3Gb7lpyif-yk/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxktPKa5aI3mSrjFZPuOjmaLBMMKDoY9kL9EfYhvoE1pppUWgcgIaBLlVR2GXZfYQ/exec';
 
 // Fetch dari Apps Script — lebih cepat dari gviz/tq karena tidak terpengaruh formula
 async function api(action, extraParams, attempt=1) {
@@ -803,6 +803,15 @@ async function fetchRecap() {
   const data = await api('recap');
   _cache.recap = Array.isArray(data) ? data : [];
   return _cache.recap;
+}
+
+async function fetchSearchBar(nik) {
+  const normNik = normalizeNIK(nik);
+  const cacheKey = 'sb_' + normNik;
+  if (_cache[cacheKey] !== undefined) return _cache[cacheKey];
+  const data = await api('searchbar', { nik: normNik });
+  _cache[cacheKey] = data;
+  return data;
 }
 
 // NIK normalization: strip leading zeros untuk NIK angka murni
@@ -1096,7 +1105,7 @@ async function doLogin() {
       found = true;
     } else {
       // Tidak ada di Access tab — cek di Search Bar per NIK (ringan, hanya 1 baris)
-      const sbUser = await api('searchbar', { nik });
+      const sbUser = await fetchSearchBar(nik);
       if (sbUser) {
         name  = sbUser['Name'] || sbUser['NAMA'] || sbUser['nama'] || rawNik;
         found = true;
@@ -1212,14 +1221,13 @@ async function loadMyLearning() {
   const el = document.getElementById('my-learning-content');
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div class="loading-text">Memuat data learning...</div></div>';
   try {
-    const nik = normalizeNIK(currentUser.nik).toLowerCase();
-    // Fetch Search Bar data untuk NIK ini via Apps Script
-    // Retry searchbar up to 3x — CORS retry handled inside api()
-    let sbRow = null;
+    const nik = normalizeNIK(currentUser.nik);
+
+    // Fetch dari Database by NIK (bukan Search Bar yang dynamic)
+    let empRow = null;
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        const sbRows = await api('searchbar', { nik });
-        sbRow = Array.isArray(sbRows) ? sbRows[0] : sbRows;
+        empRow = await api('employee', { nik });
         break;
       } catch(e) {
         if (attempt === 3) throw e;
@@ -1227,13 +1235,13 @@ async function loadMyLearning() {
       }
     }
 
-    if (!sbRow) {
+    if (!empRow) {
       el.innerHTML = '<div class="empty-state"><div class="empty-icon">😕</div><div class="empty-text">Data learning untuk NIK ini belum tersedia.</div></div>';
       return;
     }
 
     // Tampilkan summary dulu tanpa list kelas
-    el.innerHTML = buildLearningCard(sbRow, []);
+    el.innerHTML = buildLearningCard(empRow, []);
 
     // Pasang tombol "Lihat Riwayat Kelas" yang fetch on-demand
     const detailBtn = document.getElementById('btn-load-classes');
@@ -1244,7 +1252,7 @@ async function loadMyLearning() {
         try {
           const myClasses = await api('participation', { nik });
           const classSection = document.getElementById('class-detail-section');
-          if (classSection) classSection.innerHTML = buildClassTable(myClasses);
+          if (classSection) classSection.innerHTML = buildClassTable(Array.isArray(myClasses) ? myClasses : []);
         } catch(e) {
           detailBtn.textContent = 'Gagal memuat. Coba lagi.';
           detailBtn.disabled = false;
@@ -1498,32 +1506,26 @@ function buildEmployeeCard(emp) {
 
 
 // ============================================================
-// HR SEARCH — pakai Search Bar + Learning Participation
+// HR SEARCH — pakai Database by NIK + Learning Participation on-demand
 // ============================================================
 async function hrSearch() {
   const rawNik = document.getElementById('hr-search-input').value.trim();
   if (!rawNik) { showToast('Masukkan NIK terlebih dahulu', 'error'); return; }
-  const nik = normalizeNIK(rawNik).toLowerCase();
+  const nik = normalizeNIK(rawNik);
   const el  = document.getElementById('hr-search-result');
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div><div class="loading-text">Mencari...</div></div>';
 
   try {
-    // Only fetch Search Bar (light) — participation loaded on-demand
-    const [sbRawRows, accRows] = await Promise.all([
-      api('searchbar', { nik }),
+    const [empRow, accRows] = await Promise.all([
+      api('employee', { nik }),
       accessData.length > 0 ? Promise.resolve(accessData) : fetchAccess(),
     ]);
     if (accessData.length === 0) accessData = accRows;
 
-    // api('searchbar') may return array or single object
-    const sbAllRows = Array.isArray(sbRawRows) ? sbRawRows : (sbRawRows ? [sbRawRows] : []);
-    const sbRow = sbAllRows.find(r => normalizeNIK(r['NIK']||r['nik']||'').toLowerCase() === nik)
-                  || sbAllRows[0] || null;
-
-    // Layer check for Employee role
+    // Layer check untuk Employee role
     if (!(currentUser.role === 'HR' || currentUser.role === 'Admin')) {
-      const selfSearch       = nik === normalizeNIK(currentUser.nik).toLowerCase();
-      const targetUserAccess = accessData.find(a => normalizeNIK(a['NIK']||a['nik']||'').toLowerCase() === nik);
+      const selfSearch       = nik === normalizeNIK(currentUser.nik);
+      const targetUserAccess = accessData.find(a => normalizeNIK(a['NIK']||a['nik']||'') === nik);
       const targetLayer      = targetUserAccess ? getAccessLayer(targetUserAccess) : 'NL';
       if (!selfSearch && !canAccessLayer(currentUser.layer, targetLayer)) {
         el.innerHTML = '<div class="empty-state"><div class="empty-icon">🔒</div><div class="empty-text">Anda tidak memiliki akses untuk melihat data karyawan ini.</div></div>';
@@ -1531,13 +1533,14 @@ async function hrSearch() {
       }
     }
 
-    if (!sbRow) {
+    if (!empRow) {
       el.innerHTML = '<div class="empty-state"><div class="empty-icon">😕</div><div class="empty-text">NIK tidak ditemukan dalam database.</div></div>';
       return;
     }
-    el.innerHTML = buildLearningCard(sbRow, []);
 
-    // Wire on-demand class loader for this searched NIK
+    el.innerHTML = buildLearningCard(empRow, []);
+
+    // Wire on-demand class loader
     const detailBtn = document.getElementById('btn-load-classes');
     if (detailBtn) {
       detailBtn.addEventListener('click', async () => {
@@ -1546,7 +1549,7 @@ async function hrSearch() {
         try {
           const myClasses = await api('participation', { nik });
           const classSection = document.getElementById('class-detail-section');
-          if (classSection) classSection.innerHTML = buildClassTable(myClasses);
+          if (classSection) classSection.innerHTML = buildClassTable(Array.isArray(myClasses) ? myClasses : []);
         } catch(e) {
           detailBtn.textContent = 'Gagal memuat. Coba lagi.';
           detailBtn.disabled = false;
