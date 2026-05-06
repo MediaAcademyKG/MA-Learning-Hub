@@ -734,7 +734,7 @@ const PUB_BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAn
 // CONFIG — Apps Script Web App
 // Setelah deploy Apps Script, ganti URL di bawah ini
 // ============================================================
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzfgN1WY1rCCxwoRyvs1PgckH8F_HG50LyaADySDkWhsFVQlsi5GKs27nOss3C96vU/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwbbYrN0eW1edocQy8CJdV0f31LX9Ij8RrONlKzNbWEV39T5gXjKAh-s6RHS37_uUU/exec';
 
 // ── CSV URLs (published Google Sheet tabs) — tidak perlu Apps Script, tidak ada CORS ──
 // Ganti SHEET_ID dengan ID sheet Database kamu
@@ -1188,11 +1188,13 @@ function buildNav() {
     tabs.push({ id: 'hub',         label: '🎓 Learning Hub' });
   } else if (role === 'HR') {
     tabs.push({ id: 'dashboard',     label: '📊 Dashboard',   load: loadDashboard });
+    tabs.push({ id: 'participation', label: '📋 Partisipasi', load: loadParticipation });
     tabs.push({ id: 'search',        label: '🔍 Cari Karyawan' });
     tabs.push({ id: 'my-learning',   label: '📚 Learning Saya', load: loadMyLearning });
     tabs.push({ id: 'hub',           label: '🎓 Learning Hub' });
   } else if (role === 'Admin') {
     tabs.push({ id: 'dashboard',     label: '📊 Dashboard',   load: loadDashboard });
+    tabs.push({ id: 'participation', label: '📋 Partisipasi', load: loadParticipation });
     tabs.push({ id: 'search',        label: '🔍 Cari Karyawan' });
     tabs.push({ id: 'my-learning',   label: '📚 Learning Saya', load: loadMyLearning });
     tabs.push({ id: 'hub',           label: '🎓 Learning Hub' });
@@ -1362,24 +1364,19 @@ function buildLearningCard(sb, classes) {
   const unit     = getCol(ref, 'Unit', 'UNIT') || '-';
   const direct   = getCol(ref, 'Directorate', 'DIRECTORATE') || '-';
 
-  // Exact column names dari tab Database
-  // Fallback ke variasi nama kalau Apps Script normalize berbeda
-  const allHours    = safeNum(getCol(sb, 'All Learning Hours', 'All Hours'));
-  const asLearnerJ  = safeNum(getCol(sb, 'As Learner (Jam)', 'As Learner (JAM)'));
-  const asTrainerJ  = safeNum(getCol(sb, 'As Trainer (Jam)', 'As Trainer (JAM)'));
-  const asLearnerK  = safeNum(getCol(sb, 'As Learner (Jumlah Kelas)', 'As Learner (JUMLAH KELAS)'));
-  const asTrainerK  = safeNum(getCol(sb, 'As Trainer (Jumlah Kelas)', 'As Trainer (JUMLAH KELAS)'));
-  const m1          = safeNum(getCol(sb, 'First Mandatory', 'First mandatory'));
-  const m2          = safeNum(getCol(sb, 'Second Mandatory', 'Second mandatory'));
-  const m3          = safeNum(getCol(sb, 'Third Mandatory', 'Third mandatory'));
+  // Summary — exact column names dari tab Database
+  const allHours    = safeNum(getCol(sb, 'All Learning Hours'));
+  const asLearnerJ  = safeNum(getCol(sb, 'As Learner (Jam)'));
+  const asTrainerJ  = safeNum(getCol(sb, 'As Trainer (Jam)'));
+  const asLearnerK  = safeNum(getCol(sb, 'As Learner (Jumlah Kelas)'));
+  const asTrainerK  = safeNum(getCol(sb, 'As Trainer (Jumlah Kelas)'));
+  const m1          = safeNum(getCol(sb, 'First Mandatory'));
+  const m2          = safeNum(getCol(sb, 'Second Mandatory'));
+  const m3          = safeNum(getCol(sb, 'Third Mandatory'));
   const mandDone    = [m1,m2,m3].filter(x => x > 0).length;
 
-  // Learning Hours = tanpa 3 mandatory pertama
-  const learningH   = safeNum(getCol(sb,
-    'Learning Hours (tanpa 3 mandatory pertama)',
-    'Learning Hours (Tanpa 3 Mandatory Pertama)',
-    'Learning Hours',
-  ));
+  // Learning Hours = tanpa 3 mandatory pertama (sudah dihitung di sheet)
+  const learningH   = safeNum(getCol(sb, 'Learning Hours (tanpa 3 mandatory pertama)'));
   const totalHours  = asLearnerJ + asTrainerJ;
   const completion  = learningH >= 18 ? 'Complete' : learningH > 0 ? 'Incomplete' : '-';
   const target      = 18;
