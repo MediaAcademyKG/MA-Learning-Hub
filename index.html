@@ -734,7 +734,7 @@ const PUB_BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAn
 // CONFIG — Apps Script Web App
 // Setelah deploy Apps Script, ganti URL di bawah ini
 // ============================================================
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwbbYrN0eW1edocQy8CJdV0f31LX9Ij8RrONlKzNbWEV39T5gXjKAh-s6RHS37_uUU/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzfgN1WY1rCCxwoRyvs1PgckH8F_HG50LyaADySDkWhsFVQlsi5GKs27nOss3C96vU/exec';
 
 // ── CSV URLs (published Google Sheet tabs) — tidak perlu Apps Script, tidak ada CORS ──
 // Ganti SHEET_ID dengan ID sheet Database kamu
@@ -1188,13 +1188,11 @@ function buildNav() {
     tabs.push({ id: 'hub',         label: '🎓 Learning Hub' });
   } else if (role === 'HR') {
     tabs.push({ id: 'dashboard',     label: '📊 Dashboard',   load: loadDashboard });
-    tabs.push({ id: 'participation', label: '📋 Partisipasi', load: loadParticipation });
     tabs.push({ id: 'search',        label: '🔍 Cari Karyawan' });
     tabs.push({ id: 'my-learning',   label: '📚 Learning Saya', load: loadMyLearning });
     tabs.push({ id: 'hub',           label: '🎓 Learning Hub' });
   } else if (role === 'Admin') {
     tabs.push({ id: 'dashboard',     label: '📊 Dashboard',   load: loadDashboard });
-    tabs.push({ id: 'participation', label: '📋 Partisipasi', load: loadParticipation });
     tabs.push({ id: 'search',        label: '🔍 Cari Karyawan' });
     tabs.push({ id: 'my-learning',   label: '📚 Learning Saya', load: loadMyLearning });
     tabs.push({ id: 'hub',           label: '🎓 Learning Hub' });
