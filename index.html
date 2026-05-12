@@ -734,7 +734,7 @@ const PUB_BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRi8cH5nQW3xAn
 // CONFIG — Apps Script Web App
 // Setelah deploy Apps Script, ganti URL di bawah ini
 // ============================================================
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyz12RaCFLJrLltCTkrwdfUJ75GKbyLPBuGiTJmnl7NnjVts7oB0K4z88yPtr5FeQo/exec';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxnKmT0lN99wT5HOtTb2E6hL7D7kUXpLX7h2F-dxRZ3n9DFxxidsmyR6BLVWwwG/exec';
 
 // ── CSV URLs (published Google Sheet tabs) — tidak perlu Apps Script, tidak ada CORS ──
 // Ganti SHEET_ID dengan ID sheet Database kamu
@@ -1363,7 +1363,7 @@ function buildLearningCard(sb, classes) {
   const direct   = getCol(ref, 'Directorate', 'DIRECTORATE') || '-';
 
   // Summary — exact column names dari tab Database
-  const allHours    = safeNum(getCol(sb, 'All Learning Hours'));
+  const allHours    = safeNum(getCol(sb, 'All Hours'));
   const asLearnerJ  = safeNum(getCol(sb, 'As Learner (Jam)'));
   const asTrainerJ  = safeNum(getCol(sb, 'As Trainer (Jam)'));
   const asLearnerK  = safeNum(getCol(sb, 'As Learner (Jumlah Kelas)'));
@@ -1374,7 +1374,10 @@ function buildLearningCard(sb, classes) {
   const mandDone    = [m1,m2,m3].filter(x => x > 0).length;
 
   // Learning Hours = tanpa 3 mandatory pertama (sudah dihitung di sheet)
-  const learningH   = safeNum(getCol(sb, 'Learning Hours (tanpa 3 mandatory pertama)'));
+  const learningHRaw = safeNum(getCol(sb, 'Learning Hours'));
+  const mandTotal   = m1 + m2 + m3;
+  // Kalau mandatory = 0 dan Learning Hours < All Hours, gunakan All Hours
+  const learningH   = (mandTotal === 0 && learningHRaw < allHours) ? allHours : learningHRaw;
   const totalHours  = asLearnerJ + asTrainerJ;
   const completion  = learningH >= 18 ? 'Complete' : learningH > 0 ? 'Incomplete' : '-';
   const target      = 18;
