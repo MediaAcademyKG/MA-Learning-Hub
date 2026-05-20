@@ -7,6 +7,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
+  /* ── SIDEBAR LAYOUT OVERRIDES ── */
+  :root { --sidebar-w: 228px; }
+</style>
+<style>
   /* ===================== VARIABLES ===================== */
   :root {
     --kg-navy:    #0a1f44;
@@ -44,9 +48,95 @@
     color: var(--gray-900);
     min-height: 100vh;
     overflow-x: hidden;
+    display: flex;
   }
 
-  /* ===================== MAINTENANCE SCREEN ===================== */
+  /* ===================== SIDEBAR ===================== */
+  .app-sidebar {
+    width: var(--sidebar-w);
+    background: var(--kg-navy);
+    min-height: 100vh;
+    position: fixed; left: 0; top: 0; bottom: 0;
+    display: none; flex-direction: column;
+    z-index: 200; overflow-y: auto;
+    transition: transform 0.3s;
+  }
+  .app-sidebar.visible { display: flex; }
+  .sb-logo {
+    padding: 20px 18px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .sb-logo img { height: 28px; filter: brightness(0) invert(1); object-fit: contain; }
+  .sb-logo-text .brand { font-family: 'Sora', sans-serif; font-size: 0.88rem; font-weight: 700; color: white; }
+  .sb-logo-text .sub { font-size: 0.6rem; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.07em; margin-top: 1px; }
+
+  .sb-user {
+    padding: 14px 18px;
+    display: flex; align-items: center; gap: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .sb-avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--kg-mid); color: white; font-size: 0.72rem; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .sb-user-name { font-size: 0.78rem; font-weight: 600; color: white; }
+  .sb-user-role { font-size: 0.62rem; color: rgba(255,255,255,0.45); margin-top: 1px; }
+
+  .sb-nav { flex: 1; padding: 10px 0; }
+  .sb-section { font-size: 0.58rem; font-weight: 700; color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 0.1em; padding: 12px 18px 4px; }
+  .sb-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 18px;
+    font-size: 0.8rem; font-weight: 500; color: rgba(255,255,255,0.6);
+    cursor: pointer; border-left: 3px solid transparent;
+    transition: all 0.2s;
+  }
+  .sb-item:hover { color: white; background: rgba(255,255,255,0.05); }
+  .sb-item.active { color: white; background: rgba(255,255,255,0.1); border-left-color: var(--kg-cyan); }
+  .sb-item .si { font-size: 0.95rem; width: 18px; flex-shrink: 0; text-align: center; }
+  .sb-item .badge-count { margin-left: auto; background: var(--danger); color: white; font-size: 0.6rem; font-weight: 700; padding: 1px 6px; border-radius: 10px; }
+
+  .sb-footer {
+    padding: 14px 18px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    font-size: 0.65rem; color: rgba(255,255,255,0.3);
+  }
+  .sb-logout-btn {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 18px; font-size: 0.75rem; font-weight: 500;
+    color: rgba(255,255,255,0.5); cursor: pointer; transition: color 0.2s;
+    border-top: 1px solid rgba(255,255,255,0.08); margin-top: 4px;
+  }
+  .sb-logout-btn:hover { color: #f87171; }
+
+  /* ===================== MAIN SHELL ===================== */
+  .app-shell { display: flex; flex: 1; min-height: 100vh; }
+  #app { display: none; flex: 1; min-height: 100vh; flex-direction: row; }
+  #app.active { display: flex; }
+
+  .app-main { flex: 1; display: flex; flex-direction: column; transition: margin-left 0.3s; }
+  .app-main.with-sidebar { margin-left: var(--sidebar-w); }
+
+  /* ===================== TOPBAR ===================== */
+  .app-topbar {
+    background: white;
+    border-bottom: 1px solid var(--gray-200);
+    padding: 12px 28px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+    box-shadow: 0 1px 8px rgba(10,31,68,0.06);
+  }
+  .topbar-left { display: flex; flex-direction: column; }
+  .topbar-page-title { font-family: 'Sora', sans-serif; font-size: 1rem; font-weight: 700; color: var(--kg-navy); }
+  .topbar-page-sub { font-size: 0.72rem; color: var(--gray-500); margin-top: 1px; }
+  .topbar-right { display: flex; align-items: center; gap: 10px; }
+  .topbar-badge {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--gray-50); border: 1px solid var(--gray-200);
+    border-radius: 30px; padding: 5px 12px 5px 8px;
+    font-size: 0.78rem; color: var(--gray-700);
+  }
+  .topbar-avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--kg-mid); color: white; display: flex; align-items: center; justify-content: center; font-size: 0.65rem; font-weight: 700; }
+
+
   #maintenance-screen {
     display: none;
     position: fixed; inset: 0; z-index: 9999;
@@ -154,88 +244,182 @@
   .login-maint-alert.show { display: block; }
   .login-footer { text-align: center; color: var(--gray-300); font-size: 0.75rem; margin-top: 32px; }
 
-  /* ===================== APP SHELL ===================== */
-  #app { display: none; min-height: 100vh; flex-direction: column; }
-  #app.active { display: flex; }
-
-  /* ===================== HEADER ===================== */
-  .app-header {
-    background: var(--kg-grad);
-    padding: 0 32px;
-    height: 64px;
-    display: flex; align-items: center;
-    justify-content: space-between;
-    position: sticky; top: 0; z-index: 100;
-    box-shadow: 0 2px 16px rgba(10,31,68,0.3);
-  }
-  .header-logo { display: flex; align-items: center; gap: 12px; }
-  .header-logo img { height: 36px; filter: brightness(0) invert(1); object-fit: contain; }
-  .header-logo .portal-label {
-    color: rgba(255,255,255,0.7);
-    font-size: 0.72rem; letter-spacing: 0.12em;
-    text-transform: uppercase; font-weight: 500;
-    border-left: 1px solid rgba(255,255,255,0.25);
-    padding-left: 12px;
-  }
-  .header-right { display: flex; align-items: center; gap: 16px; }
-  .user-badge {
-    display: flex; align-items: center; gap: 8px;
-    background: rgba(255,255,255,0.12);
-    border-radius: 40px; padding: 6px 14px 6px 10px;
-    color: white; font-size: 0.82rem;
-  }
-  .user-avatar {
-    width: 28px; height: 28px; border-radius: 50%;
-    background: var(--kg-accent);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 0.75rem; font-weight: 700; color: white;
-  }
-  .user-role-badge {
-    font-size: 0.65rem; padding: 2px 8px;
-    border-radius: 20px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
-  }
-  .role-admin { background: #fbbf24; color: #78350f; }
-  .role-hr { background: var(--kg-accent); color: var(--kg-navy); }
-  .role-employee { background: rgba(255,255,255,0.2); color: white; }
-  .btn-logout {
-    background: rgba(255,255,255,0.12);
-    border: 1px solid rgba(255,255,255,0.2);
-    color: white; border-radius: 8px;
-    padding: 6px 14px; font-size: 0.8rem;
-    cursor: pointer; transition: background 0.2s;
-    font-family: 'DM Sans', sans-serif;
-  }
-  .btn-logout:hover { background: rgba(255,255,255,0.22); }
-
-  /* ===================== NAV TABS ===================== */
-  .app-nav {
-    background: var(--kg-navy);
-    padding: 0 32px;
-    display: flex; align-items: center;
-    gap: 2px; overflow-x: auto;
-    scrollbar-width: none;
-  }
-  .app-nav::-webkit-scrollbar { display: none; }
-  .nav-tab {
-    padding: 14px 20px;
-    color: rgba(255,255,255,0.55);
-    font-size: 0.82rem; font-weight: 500;
-    cursor: pointer; border-bottom: 3px solid transparent;
-    white-space: nowrap; transition: color 0.2s, border-color 0.2s;
-    display: flex; align-items: center; gap: 7px;
-    user-select: none;
-  }
-  .nav-tab:hover { color: rgba(255,255,255,0.85); }
-  .nav-tab.active { color: white; border-bottom-color: var(--kg-cyan); }
-  .nav-tab .tab-icon { font-size: 0.9em; }
+  /* ===================== MAINTENANCE SCREEN ===================== */
 
   /* ===================== CONTENT AREA ===================== */
-  .app-content { flex: 1; padding: 32px; max-width: 1400px; width: 100%; margin: 0 auto; }
+  .app-content { flex: 1; padding: 28px 32px; max-width: 1500px; width: 100%; }
   .tab-panel { display: none; animation: fadeIn 0.3s ease; }
   .tab-panel.active { display: block; }
   @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
 
-  /* ===================== MAINTENANCE BANNER ===================== */
+  /* Blueprint-style KPI cards (for admin tabs) */
+  .kpi-row-6 { display: grid; grid-template-columns: repeat(6,1fr); gap: 12px; margin-bottom: 20px; }
+  .kpi-row-4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 20px; }
+  .kpi-card-bp {
+    background: white; border-radius: 12px; padding: 16px 18px;
+    border: 1px solid var(--gray-200); position: relative; overflow: hidden;
+  }
+  .kpi-card-bp::after { content:''; position:absolute; top:0;left:0;right:0; height:3px; }
+  .kpi-card-bp.c-blue::after   { background: var(--kg-mid); }
+  .kpi-card-bp.c-green::after  { background: var(--success); }
+  .kpi-card-bp.c-amber::after  { background: var(--warning); }
+  .kpi-card-bp.c-red::after    { background: var(--danger); }
+  .kpi-card-bp.c-violet::after { background: #7c3aed; }
+  .kpi-card-bp.c-cyan::after   { background: var(--kg-accent); }
+  .kpi-card-bp .kpi-icon { font-size: 1.2rem; margin-bottom: 6px; }
+  .kpi-card-bp .kpi-lbl { font-size: 0.65rem; font-weight: 700; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 3px; }
+  .kpi-card-bp .kpi-val { font-family: 'Sora', sans-serif; font-size: 1.7rem; font-weight: 700; color: var(--kg-navy); line-height: 1; }
+  .kpi-card-bp .kpi-delta { font-size: 0.68rem; color: var(--gray-500); margin-top: 4px; }
+  .kpi-card-bp .kpi-up   { color: var(--success); font-weight: 600; }
+  .kpi-card-bp .kpi-dn   { color: var(--danger); font-weight: 600; }
+  .kpi-mini-bar { height: 4px; background: var(--gray-100); border-radius: 99px; overflow: hidden; margin-top: 8px; }
+  .kpi-mini-fill { height: 100%; border-radius: 99px; }
+  .kpi-mini-fill.c-blue   { background: var(--kg-mid); }
+  .kpi-mini-fill.c-green  { background: var(--success); }
+  .kpi-mini-fill.c-amber  { background: var(--warning); }
+  .kpi-mini-fill.c-red    { background: var(--danger); }
+  .kpi-mini-fill.c-violet { background: #7c3aed; }
+  .kpi-mini-fill.c-cyan   { background: var(--kg-accent); }
+
+  /* Charts 2-col grid */
+  .chart-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .chart-grid-3-1 { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .chart-panel { background: white; border-radius: 14px; border: 1px solid var(--gray-200); overflow: hidden; }
+  .chart-head { padding: 14px 18px 10px; display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 1px solid var(--gray-100); }
+  .chart-title { font-size: 0.82rem; font-weight: 700; color: var(--kg-navy); }
+  .chart-sub { font-size: 0.68rem; color: var(--gray-500); margin-top: 2px; }
+  .chart-badge { font-size: 0.62rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; }
+  .cb-blue { background: #eff6ff; color: var(--kg-mid); }
+  .cb-green { background: #ecfdf5; color: #065f46; }
+  .cb-amber { background: #fffbeb; color: #92400e; }
+  .chart-body { padding: 14px 18px; }
+
+  /* Horizontal bars */
+  .hbar-list { display: flex; flex-direction: column; gap: 10px; }
+  .hbar-meta { display: flex; justify-content: space-between; margin-bottom: 3px; }
+  .hbar-label { font-size: 0.73rem; font-weight: 600; color: var(--kg-navy); }
+  .hbar-val   { font-size: 0.7rem; font-weight: 700; color: var(--gray-500); }
+  .hbar-track { height: 7px; background: var(--gray-100); border-radius: 99px; overflow: hidden; }
+  .hbar-fill  { height: 100%; border-radius: 99px; }
+
+  /* Donut legend */
+  .donut-wrap { display: flex; align-items: center; gap: 16px; }
+  .donut-legend { display: flex; flex-direction: column; gap: 7px; }
+  .leg-item { display: flex; align-items: center; gap: 7px; font-size: 0.72rem; }
+  .leg-dot  { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+  /* Stacked bar */
+  .stack-row { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
+  .stack-lbl { font-size: 0.7rem; font-weight: 600; color: var(--kg-navy); width: 110px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stack-bar { flex: 1; height: 16px; border-radius: 6px; overflow: hidden; display: flex; }
+  .stack-seg { height: 100%; }
+
+  /* Attention band */
+  .attn-band {
+    background: var(--kg-grad); border-radius: 14px;
+    padding: 16px 22px; margin-bottom: 20px;
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  }
+  .attn-left { display: flex; align-items: center; gap: 12px; }
+  .attn-icon { font-size: 1.8rem; }
+  .attn-title { font-family: 'Sora', sans-serif; font-size: 0.9rem; font-weight: 700; color: white; }
+  .attn-sub   { font-size: 0.72rem; color: rgba(255,255,255,0.65); margin-top: 2px; }
+  .attn-pills { display: flex; gap: 8px; flex-wrap: wrap; }
+  .attn-pill { background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; padding: 7px 12px; text-align: center; }
+  .attn-pill-val { font-family: 'Sora', sans-serif; font-size: 1.1rem; font-weight: 700; color: white; }
+  .attn-pill-lbl { font-size: 0.6rem; color: rgba(255,255,255,0.55); white-space: nowrap; }
+
+  /* Section headers */
+  .sec-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; margin-top: 4px; }
+  .sec-title { font-size: 0.82rem; font-weight: 800; color: var(--kg-navy); display: flex; align-items: center; gap: 7px; }
+  .sec-title::before { content:''; display:block; width:3px; height:16px; background:var(--kg-mid); border-radius:2px; }
+  .sec-link { font-size: 0.7rem; font-weight: 600; color: var(--kg-mid); cursor: pointer; }
+
+  /* Tags */
+  .tag { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 20px; font-size: 0.63rem; font-weight: 700; }
+  .tag-blue   { background: #eff6ff; color: var(--kg-mid); }
+  .tag-green  { background: #ecfdf5; color: #065f46; }
+  .tag-amber  { background: #fffbeb; color: #92400e; }
+  .tag-red    { background: #fef2f2; color: #991b1b; }
+  .tag-violet { background: #f5f3ff; color: #5b21b6; }
+  .tag-gray   { background: #f1f5f9; color: var(--gray-500); }
+
+  /* Rank table */
+  .rank-tbl { width: 100%; border-collapse: collapse; }
+  .rank-tbl th { font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--gray-500); padding: 5px 9px; text-align: left; background: var(--gray-50); }
+  .rank-tbl td { font-size: 0.76rem; padding: 8px 9px; border-bottom: 1px solid var(--gray-100); vertical-align: middle; }
+  .rank-tbl tr:last-child td { border-bottom: none; }
+
+  /* Alert grid */
+  .alert-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .alert-card { border-radius: 10px; padding: 11px 13px; display: flex; align-items: flex-start; gap: 9px; }
+  .alert-card.warn  { background: #fffbeb; border: 1px solid #fde68a; }
+  .alert-card.info  { background: #eff6ff; border: 1px solid #bfdbfe; }
+  .alert-card.crit  { background: #fef2f2; border: 1px solid #fecaca; }
+  .alert-card.ok    { background: #ecfdf5; border: 1px solid #a7f3d0; }
+  .alert-icon { font-size: 1.1rem; flex-shrink: 0; }
+  .alert-title { font-size: 0.76rem; font-weight: 700; }
+  .alert-desc  { font-size: 0.68rem; color: var(--gray-500); margin-top: 2px; }
+
+  /* Per-unit section */
+  .unit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; margin-bottom: 20px; }
+  .unit-card { background: white; border-radius: 12px; padding: 16px 18px; border: 1px solid var(--gray-200); }
+  .unit-name { font-size: 0.82rem; font-weight: 700; color: var(--kg-navy); margin-bottom: 8px; }
+  .unit-stats { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .unit-stat { text-align: center; flex: 1; min-width: 50px; }
+  .unit-stat-val { font-family: 'Sora', sans-serif; font-size: 1.1rem; font-weight: 700; color: var(--kg-navy); }
+  .unit-stat-lbl { font-size: 0.6rem; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.04em; }
+
+  /* Topic program cards */
+  .topic-prog-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .topic-prog-card { background: white; border-radius: 12px; padding: 16px; border: 1px solid var(--gray-200); }
+  .topic-prog-icon { font-size: 1.6rem; margin-bottom: 8px; }
+  .topic-prog-name { font-size: 0.82rem; font-weight: 700; color: var(--kg-navy); margin-bottom: 4px; }
+  .topic-prog-stats { font-size: 0.72rem; color: var(--gray-500); margin-bottom: 8px; }
+  .topic-mini-bar { height: 5px; background: var(--gray-100); border-radius: 99px; overflow: hidden; }
+  .topic-mini-fill { height: 100%; border-radius: 99px; background: var(--kg-mid); }
+
+  /* Export panel */
+  .export-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+  .export-card { background: white; border-radius: 12px; padding: 20px; border: 1px solid var(--gray-200); display: flex; flex-direction: column; gap: 10px; }
+  .export-icon { font-size: 2rem; }
+  .export-title { font-size: 0.88rem; font-weight: 700; color: var(--kg-navy); }
+  .export-desc { font-size: 0.76rem; color: var(--gray-500); flex: 1; }
+  .btn-export {
+    padding: 9px 16px; background: var(--kg-grad2); color: white;
+    border: none; border-radius: 8px; font-size: 0.78rem; font-weight: 600;
+    cursor: pointer; display: flex; align-items: center; gap: 6px; align-self: flex-start;
+    transition: opacity 0.2s;
+  }
+  .btn-export:hover { opacity: 0.88; }
+  .btn-export.outline { background: transparent; color: var(--kg-mid); border: 1px solid var(--kg-mid); }
+  .btn-export.outline:hover { background: #eff6ff; }
+
+  /* Settings */
+  .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { .settings-grid { grid-template-columns: 1fr; } }
+  .settings-section { background: white; border-radius: 14px; padding: 20px; border: 1px solid var(--gray-200); }
+  .settings-title { font-family: 'Sora', sans-serif; font-size: 0.88rem; font-weight: 700; color: var(--kg-navy); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+  .settings-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--gray-100); }
+  .settings-row:last-child { border-bottom: none; }
+  .settings-row-label { font-size: 0.8rem; font-weight: 500; color: var(--gray-700); }
+  .settings-row-sub { font-size: 0.7rem; color: var(--gray-500); margin-top: 1px; }
+
+  /* Responsive */
+  @media (max-width: 900px) {
+    .app-sidebar { transform: translateX(-100%); }
+    .app-sidebar.mobile-open { transform: translateX(0); }
+    .app-main.with-sidebar { margin-left: 0; }
+    .kpi-row-6 { grid-template-columns: repeat(3, 1fr); }
+    .chart-grid-2, .chart-grid-3-1 { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 600px) {
+    .kpi-row-6 { grid-template-columns: repeat(2, 1fr); }
+    .kpi-row-4 { grid-template-columns: repeat(2, 1fr); }
+    .alert-grid { grid-template-columns: 1fr; }
+    .attn-band { flex-direction: column; }
+  }
+
   .maintenance-banner {
     display: none;
     background: linear-gradient(135deg, #dc2626, #f97316);
@@ -571,151 +755,455 @@
 
 <!-- MAIN APP -->
 <div id="app">
-  <!-- Maintenance banner for admin -->
-  <div class="maintenance-banner" id="maint-banner">
-    ⚠️ MODE MAINTENANCE AKTIF — Karyawan tidak dapat mengakses portal saat ini
-  </div>
 
-  <!-- Header -->
-  <header class="app-header">
-    <div class="header-logo">
-      <img id="app-logo-img" src="" alt="KG Media">
-      <span class="portal-label">MA Learning Hub</span>
+  <!-- SIDEBAR -->
+  <aside class="app-sidebar" id="app-sidebar">
+    <div class="sb-logo">
+      <img id="sb-logo-img" src="" alt="KG">
+      <div class="sb-logo-text">
+        <div class="brand">KG Media</div>
+        <div class="sub">Learning Hub</div>
+      </div>
     </div>
-    <div class="header-right">
-      <div class="user-badge" id="user-badge">
-        <div class="user-avatar" id="user-avatar">?</div>
-        <div>
-          <div id="user-name-display" style="font-weight:600;font-size:0.85rem;"></div>
-          <div id="user-nik-display" style="opacity:0.7;font-size:0.72rem;"></div>
+    <div class="sb-user">
+      <div class="sb-avatar" id="sb-avatar">?</div>
+      <div>
+        <div class="sb-user-name" id="sb-user-name">—</div>
+        <div class="sb-user-role" id="sb-user-role">—</div>
+      </div>
+    </div>
+    <nav class="sb-nav" id="sb-nav"></nav>
+    <div class="sb-logout-btn" onclick="doLogout()">⬡ Keluar dari Portal</div>
+    <div class="sb-footer" id="sb-footer">Update: 20 Mei 2026 · 08:00</div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="app-main" id="app-main">
+    <!-- Maintenance banner -->
+    <div class="maintenance-banner" id="maint-banner">
+      ⚠️ MODE MAINTENANCE AKTIF — Karyawan tidak dapat mengakses portal saat ini
+    </div>
+
+    <!-- Topbar -->
+    <div class="app-topbar">
+      <div class="topbar-left">
+        <div class="topbar-page-title" id="topbar-title">Dashboard</div>
+        <div class="topbar-page-sub" id="topbar-sub">Data per 20 Mei 2026 · Periode Jan–Mei 2026</div>
+      </div>
+      <div class="topbar-right">
+        <div class="topbar-badge">
+          <div class="topbar-avatar" id="topbar-avatar">?</div>
+          <span id="topbar-name">—</span>
+          <span class="user-role-badge" id="topbar-role-badge"></span>
         </div>
-        <span class="user-role-badge" id="user-role-badge"></span>
       </div>
-      <button class="btn-logout" onclick="doLogout()">Keluar</button>
     </div>
-  </header>
 
-  <!-- Nav Tabs -->
-  <nav class="app-nav" id="app-nav"></nav>
+    <!-- Content -->
+    <main class="app-content">
 
-  <!-- Content -->
-  <main class="app-content">
-    <!-- TAB: MY LEARNING (Employee) -->
-    <div class="tab-panel" id="tab-my-learning">
-      <div class="page-header">
-        <div class="page-title">📚 Ringkasan Learning Saya</div>
-        <div class="page-sub">Data learning hours Anda berdasarkan data terakhir</div>
-      </div>
-      <div class="self-report-bar">
-        <div>
-          <div class="self-report-text">Belajar mandiri? Laporkan jam belajar Anda</div>
-          <span>Self-report learning hours melalui Google Form resmi</span>
+      <!-- TAB: MY LEARNING (Employee) -->
+      <div class="tab-panel" id="tab-my-learning">
+        <div class="page-header">
+          <div class="page-title">📚 Ringkasan Learning Saya</div>
+          <div class="page-sub">Data learning hours Anda berdasarkan data terakhir</div>
         </div>
-        <a class="btn-report" href="https://docs.google.com/forms/d/e/1FAIpQLSf8U74xTaJLESZOAVU8qVGYPA-yK_9ypm8n6wyRMHTw_ihTRQ/viewform" target="_blank">📝 Laporkan Jam Belajar</a>
-      </div>
-      <div id="my-learning-content">
-        <div class="loading-wrap"><div class="spinner"></div><div class="loading-text">Memuat data learning...</div></div>
-      </div>
-    </div>
-
-    <!-- TAB: SEARCH (HR can search anyone) -->
-    <div class="tab-panel" id="tab-search">
-      <div class="page-header">
-        <div class="page-title">🔍 Cari Data Karyawan</div>
-        <div class="page-sub">Cari learning summary berdasarkan NIK karyawan</div>
-      </div>
-      <div class="search-box-wrap">
-        <input class="search-input" id="hr-search-input" type="text" placeholder="Masukkan NIK karyawan..." onkeydown="if(event.key==='Enter')hrSearch()">
-        <button class="btn-search" onclick="hrSearch()">🔍 Cari</button>
-      </div>
-      <div id="hr-search-result"></div>
-    </div>
-
-    <!-- TAB: DASHBOARD (HR/Admin) -->
-    <div class="tab-panel" id="tab-dashboard">
-      <div class="page-header">
-        <div class="page-title">📊 Dashboard Learning Hours</div>
-        <div class="page-sub">Rekap keseluruhan program learning KG Media 2026</div>
-      </div>
-      <div id="dashboard-content">
-        <div class="loading-wrap"><div class="spinner"></div><div class="loading-text">Memuat dashboard...</div></div>
-      </div>
-    </div>
-
-    <!-- TAB: LEARNING PARTICIPATION (HR/Admin) -->
-    <div class="tab-panel" id="tab-participation">
-      <div class="page-header">
-        <div class="page-title">📋 Data Learning Participation</div>
-        <div class="page-sub">Raw data seluruh partisipasi learning karyawan</div>
-      </div>
-      <div class="filter-row">
-        <input class="search-input" id="part-search" style="max-width:300px;padding:9px 14px;" type="text" placeholder="Filter nama / NIK / topik..." oninput="filterParticipation()">
-        <span class="filter-tag" id="part-count"></span>
-      </div>
-      <div id="participation-content">
-        <div class="loading-wrap"><div class="spinner"></div><div class="loading-text">Memuat data partisipasi...</div></div>
-      </div>
-      <div class="pagination" id="part-pagination"></div>
-    </div>
-
-    <!-- TAB: LEARNING HUB -->
-    <div class="tab-panel" id="tab-hub">
-      <div class="page-header">
-        <div class="page-title">🎓 MA Learning Hub</div>
-        <div class="page-sub">Akses platform learning KG Media</div>
-      </div>
-      <div class="card" style="text-align:center;padding:60px 40px;">
-        <div style="font-size:4rem;margin-bottom:20px;">🎓</div>
-        <div style="font-family:'Sora',sans-serif;font-size:1.4rem;font-weight:700;color:var(--kg-navy);margin-bottom:8px;">MA Learning Hub</div>
-        <div style="color:var(--gray-500);margin-bottom:28px;font-size:0.9rem;">Klik tombol di bawah untuk mengakses platform learning KG Media</div>
-        <a href="https://bit.ly/MALearningHub" target="_blank" class="btn-report" style="font-size:1rem;padding:14px 36px;">
-          🚀 Buka MA Learning Hub
-        </a>
-        <div style="color:var(--gray-400);font-size:0.75rem;margin-top:16px;">bit.ly/MALearningHub</div>
-      </div>
-    </div>
-
-    <!-- TAB: MANAGE ACCESS (Admin) -->
-    <div class="tab-panel" id="tab-access">
-      <div class="page-header">
-        <div class="page-title">⚙️ Kelola Akses & Sistem</div>
-        <div class="page-sub">Manajemen hak akses dan mode maintenance portal</div>
-      </div>
-
-      <!-- Maintenance Toggle -->
-      <div class="card" style="margin-bottom:20px;">
-        <div class="card-title">🔧 Mode Maintenance</div>
-        <div class="info-alert">Saat mode maintenance aktif, karyawan tidak dapat login ke portal. Hanya Admin yang tetap bisa mengakses.</div>
-        <div class="toggle-row">
-          <label class="toggle-switch">
-            <input type="checkbox" id="maint-toggle" onchange="toggleMaintenance()">
-            <div class="toggle-track"></div>
-            <div class="toggle-thumb"></div>
-          </label>
-          <span class="toggle-label">Mode Maintenance</span>
-          <span class="toggle-status" id="maint-status">OFF</span>
+        <div class="self-report-bar">
+          <div>
+            <div class="self-report-text">Belajar mandiri? Laporkan jam belajar Anda</div>
+            <span>Self-report learning hours melalui Google Form resmi</span>
+          </div>
+          <a class="btn-report" href="https://docs.google.com/forms/d/e/1FAIpQLSf8U74xTaJLESZOAVU8qVGYPA-yK_9ypm8n6wyRMHTw_ihTRQ/viewform" target="_blank">📝 Laporkan Jam Belajar</a>
         </div>
-        <div style="margin-top:12px;font-size:0.8rem;color:var(--gray-500);" id="maint-time-info"></div>
+        <div id="my-learning-content">
+          <div class="loading-wrap"><div class="spinner"></div><div class="loading-text">Memuat data learning...</div></div>
+        </div>
       </div>
 
-      <!-- Access List -->
-      <div class="card">
-        <div class="card-title">👥 Daftar HR & Admin</div>
-        <div class="info-alert">Akses dikelola melalui tab <strong>Access</strong> di Google Sheet. Tabel di bawah menampilkan daftar HR dan Admin yang terdaftar.</div>
+      <!-- TAB: SEARCH -->
+      <div class="tab-panel" id="tab-search">
+        <div class="page-header">
+          <div class="page-title">🔍 Cari Data Karyawan</div>
+          <div class="page-sub">Cari learning summary berdasarkan NIK karyawan</div>
+        </div>
+        <div class="search-box-wrap">
+          <input class="search-input" id="hr-search-input" type="text" placeholder="Masukkan NIK karyawan..." onkeydown="if(event.key==='Enter')hrSearch()">
+          <button class="btn-search" onclick="hrSearch()">🔍 Cari</button>
+        </div>
+        <div id="hr-search-result"></div>
+      </div>
+
+      <!-- TAB: DASHBOARD (Overview) -->
+      <div class="tab-panel" id="tab-dashboard">
+        <div class="page-header">
+          <div class="page-title">📊 Dashboard Learning Hours</div>
+          <div class="page-sub">Rekap keseluruhan program learning KG Media 2026</div>
+        </div>
+        <div id="dashboard-content">
+          <div class="loading-wrap"><div class="spinner"></div><div class="loading-text">Memuat dashboard...</div></div>
+        </div>
+      </div>
+
+      <!-- TAB: TREN & ANALITIK -->
+      <div class="tab-panel" id="tab-tren">
+        <div class="attn-band">
+          <div class="attn-left">
+            <div class="attn-icon">📈</div>
+            <div>
+              <div class="attn-title">Tren & Analitik Learning — 2026</div>
+              <div class="attn-sub">Visualisasi pola belajar bulanan & tren antar unit</div>
+            </div>
+          </div>
+          <div class="attn-pills">
+            <div class="attn-pill"><div class="attn-pill-val">18,240</div><div class="attn-pill-lbl">Total Jam</div></div>
+            <div class="attn-pill"><div class="attn-pill-val">20.4</div><div class="attn-pill-lbl">Rata-rata/org</div></div>
+            <div class="attn-pill"><div class="attn-pill-val">62.4%</div><div class="attn-pill-lbl">Target Terpenuhi</div></div>
+          </div>
+        </div>
+        <div class="chart-grid-3-1">
+          <div class="chart-panel">
+            <div class="chart-head">
+              <div><div class="chart-title">📈 Tren Learning Hours per Bulan</div><div class="chart-sub">Akumulasi jam belajar seluruh unit (Jan–Mei 2026)</div></div>
+              <span class="chart-badge cb-blue">Trend</span>
+            </div>
+            <div class="chart-body">
+              <svg viewBox="0 0 520 170" xmlns="http://www.w3.org/2000/svg" style="width:100%">
+                <line x1="40" y1="20" x2="510" y2="20" stroke="#e2e8f0" stroke-width="1"/>
+                <line x1="40" y1="60" x2="510" y2="60" stroke="#e2e8f0" stroke-width="1"/>
+                <line x1="40" y1="100" x2="510" y2="100" stroke="#e2e8f0" stroke-width="1"/>
+                <line x1="40" y1="140" x2="510" y2="140" stroke="#e2e8f0" stroke-width="1"/>
+                <text x="34" y="24" text-anchor="end" font-size="9" fill="#94a3b8">5k</text>
+                <text x="34" y="64" text-anchor="end" font-size="9" fill="#94a3b8">4k</text>
+                <text x="34" y="104" text-anchor="end" font-size="9" fill="#94a3b8">3k</text>
+                <text x="34" y="144" text-anchor="end" font-size="9" fill="#94a3b8">1k</text>
+                <text x="100" y="162" text-anchor="middle" font-size="9" fill="#94a3b8">Jan</text>
+                <text x="195" y="162" text-anchor="middle" font-size="9" fill="#94a3b8">Feb</text>
+                <text x="290" y="162" text-anchor="middle" font-size="9" fill="#94a3b8">Mar</text>
+                <text x="385" y="162" text-anchor="middle" font-size="9" fill="#94a3b8">Apr</text>
+                <text x="480" y="162" text-anchor="middle" font-size="9" fill="#94a3b8">Mei</text>
+                <defs><linearGradient id="aG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#1565c0" stop-opacity="0.15"/><stop offset="100%" stop-color="#1565c0" stop-opacity="0"/></linearGradient></defs>
+                <polygon points="100,130 195,110 290,80 385,55 480,30 480,143 100,143" fill="url(#aG)"/>
+                <polyline points="100,130 195,110 290,80 385,55 480,30" fill="none" stroke="#1565c0" stroke-width="2.5" stroke-linejoin="round"/>
+                <circle cx="100" cy="130" r="4" fill="#1565c0"/>
+                <circle cx="195" cy="110" r="4" fill="#1565c0"/>
+                <circle cx="290" cy="80" r="4" fill="#1565c0"/>
+                <circle cx="385" cy="55" r="4" fill="#1565c0"/>
+                <circle cx="480" cy="30" r="5" fill="#1565c0"/>
+                <rect x="440" y="10" width="66" height="24" rx="5" fill="#0a1f44"/>
+                <text x="473" y="26" text-anchor="middle" font-size="9.5" fill="white" font-weight="700">5,420 jam</text>
+              </svg>
+            </div>
+          </div>
+          <div class="chart-panel">
+            <div class="chart-head">
+              <div><div class="chart-title">🎯 Status Progress</div><div class="chart-sub">Distribusi karyawan</div></div>
+            </div>
+            <div class="chart-body">
+              <div class="donut-wrap" style="flex-direction:column;gap:10px;">
+                <svg viewBox="0 0 120 120" style="width:100px;height:100px;display:block;margin:0 auto">
+                  <circle cx="60" cy="60" r="42" fill="none" stroke="#f1f5f9" stroke-width="18"/>
+                  <circle cx="60" cy="60" r="42" fill="none" stroke="#10b981" stroke-width="18" stroke-dasharray="165 98" stroke-dashoffset="0" stroke-linecap="round" transform="rotate(-90 60 60)"/>
+                  <circle cx="60" cy="60" r="42" fill="none" stroke="#f59e0b" stroke-width="18" stroke-dasharray="69 194" stroke-dashoffset="-165" stroke-linecap="round" transform="rotate(-90 60 60)"/>
+                  <circle cx="60" cy="60" r="42" fill="none" stroke="#ef4444" stroke-width="18" stroke-dasharray="29 234" stroke-dashoffset="-234" stroke-linecap="round" transform="rotate(-90 60 60)"/>
+                  <text x="60" y="56" text-anchor="middle" font-size="11" font-weight="800" fill="#0a1f44">62.4%</text>
+                  <text x="60" y="69" text-anchor="middle" font-size="7.5" fill="#64748b">selesai</text>
+                </svg>
+                <div class="donut-legend">
+                  <div class="leg-item"><div class="leg-dot" style="background:#10b981"></div><span style="flex:1;color:#64748b;">Selesai 18J</span><strong>557</strong></div>
+                  <div class="leg-item"><div class="leg-dot" style="background:#f59e0b"></div><span style="flex:1;color:#64748b;">In Progress</span><strong>221</strong></div>
+                  <div class="leg-item"><div class="leg-dot" style="background:#ef4444"></div><span style="flex:1;color:#64748b;">Belum Aktif</span><strong>114</strong></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="sec-hdr"><div class="sec-title">Perbandingan Progress per Unit</div></div>
+        <div class="chart-panel" style="margin-bottom:20px;">
+          <div class="chart-body">
+            <div class="hbar-list">
+              ${[['Kompas TV Production',82,'#10b981'],['Digital & Tech',76,'#1565c0'],['Editorial & Content',70,'#1565c0'],['Marketing & Iklan',65,'#42a5f5'],['Finance & Accounting',60,'#f59e0b'],['HR & Corp. Services',56,'#f59e0b'],['General Affairs',47,'#ef4444'],['Legal & Compliance',42,'#ef4444'],['Event & Partnership',27,'#ef4444']].map(([name,pct,color])=>`
+              <div class="hbar-item">
+                <div class="hbar-meta"><span class="hbar-label">${name}</span><span class="hbar-val">${pct}%</span></div>
+                <div class="hbar-track"><div class="hbar-fill" style="width:${pct}%;background:${color}"></div></div>
+              </div>`).join('')}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: PER UNIT / FUNGSI -->
+      <div class="tab-panel" id="tab-unit">
+        <div class="sec-hdr" style="margin-bottom:16px;">
+          <div class="sec-title">Breakdown per Unit / Fungsi</div>
+          <span class="chart-badge cb-blue">892 Karyawan · 10 Unit</span>
+        </div>
+        <div class="unit-grid" id="unit-grid-content">
+          ${[
+            {name:'Kompas TV Production',total:148,selesai:122,inprog:19,belum:7,pct:82,color:'#10b981'},
+            {name:'Digital & Tech',total:112,selesai:85,inprog:18,belum:9,pct:76,color:'#1565c0'},
+            {name:'Editorial & Content',total:97,selesai:68,inprog:19,belum:10,pct:70,color:'#1565c0'},
+            {name:'Marketing & Iklan',total:84,selesai:55,inprog:18,belum:11,pct:65,color:'#42a5f5'},
+            {name:'Finance & Accounting',total:76,selesai:46,inprog:19,belum:11,pct:60,color:'#f59e0b'},
+            {name:'HR & Corp. Services',total:63,selesai:35,inprog:16,belum:12,pct:56,color:'#f59e0b'},
+            {name:'General Affairs',total:51,selesai:24,inprog:13,belum:14,pct:47,color:'#ef4444'},
+            {name:'Legal & Compliance',total:38,selesai:16,inprog:11,belum:11,pct:42,color:'#ef4444'},
+            {name:'Event & Partnership',total:26,selesai:7,inprog:9,belum:10,pct:27,color:'#ef4444'},
+            {name:'Circulation & Dist.',total:29,selesai:8,inprog:8,belum:13,pct:28,color:'#ef4444'},
+          ].map(u=>`
+          <div class="unit-card">
+            <div class="unit-name">${u.name}</div>
+            <div class="unit-stats">
+              <div class="unit-stat"><div class="unit-stat-val">${u.total}</div><div class="unit-stat-lbl">Total</div></div>
+              <div class="unit-stat"><div class="unit-stat-val" style="color:#10b981">${u.selesai}</div><div class="unit-stat-lbl">Selesai</div></div>
+              <div class="unit-stat"><div class="unit-stat-val" style="color:#f59e0b">${u.inprog}</div><div class="unit-stat-lbl">Progress</div></div>
+              <div class="unit-stat"><div class="unit-stat-val" style="color:#ef4444">${u.belum}</div><div class="unit-stat-lbl">Belum</div></div>
+            </div>
+            <div class="kpi-mini-bar"><div class="kpi-mini-fill" style="width:${u.pct}%;background:${u.color}"></div></div>
+            <div style="font-size:0.68rem;color:var(--gray-500);margin-top:4px;text-align:right;">${u.pct}% target terpenuhi</div>
+          </div>`).join('')}
+        </div>
+      </div>
+
+      <!-- TAB: LEARNING PARTICIPATION -->
+      <div class="tab-panel" id="tab-participation">
+        <div class="page-header">
+          <div class="page-title">📋 Data Learning Participation</div>
+          <div class="page-sub">Raw data seluruh partisipasi learning karyawan</div>
+        </div>
         <div class="filter-row">
-          <input class="search-input" id="access-search" style="max-width:280px;padding:9px 14px;" placeholder="Cari nama / NIK..." oninput="filterAccessTable()">
-          <select class="select-input" id="access-role-filter" onchange="filterAccessTable()" style="min-width:150px;max-width:200px;padding:9px 14px;">
-            <option value="">Semua Role</option>
-            <option value="Admin">Admin</option>
-            <option value="HR">HR</option>
-          </select>
+          <input class="search-input" id="part-search" style="max-width:300px;padding:9px 14px;" type="text" placeholder="Filter nama / NIK / topik..." oninput="filterParticipation()">
+          <span class="filter-tag" id="part-count"></span>
         </div>
-        <div id="access-table-content">
-          <div class="loading-wrap"><div class="spinner"></div><div class="loading-text">Memuat data akses...</div></div>
+        <div id="participation-content">
+          <div class="loading-wrap"><div class="spinner"></div><div class="loading-text">Memuat data partisipasi...</div></div>
+        </div>
+        <div class="pagination" id="part-pagination"></div>
+      </div>
+
+      <!-- TAB: TOPIK & PROGRAM -->
+      <div class="tab-panel" id="tab-topik">
+        <div class="sec-hdr" style="margin-bottom:16px;">
+          <div class="sec-title">Topik & Program Mandatory</div>
+          <span class="chart-badge cb-green">6 Mandatory Topics</span>
+        </div>
+        <div class="topic-prog-grid">
+          ${[
+            {icon:'🌱',name:'Sustainability',pct:78,peserta:702,jam:2.4,color:'#10b981'},
+            {icon:'🤖',name:'AI General',pct:71,peserta:634,jam:2.0,color:'#1565c0'},
+            {icon:'📰',name:'AI for Newsroom',pct:65,peserta:580,jam:2.0,color:'#1565c0'},
+            {icon:'🧠',name:'AI Media Intelligence',pct:58,peserta:517,jam:2.0,color:'#7c3aed'},
+            {icon:'🎬',name:'Video Production',pct:52,peserta:464,jam:3.0,color:'#f59e0b'},
+            {icon:'💡',name:'Creative Thinking',pct:48,peserta:428,jam:2.5,color:'#00bcd4'},
+          ].map(t=>`
+          <div class="topic-prog-card">
+            <div class="topic-prog-icon">${t.icon}</div>
+            <div class="topic-prog-name">${t.name}</div>
+            <div class="topic-prog-stats">${t.peserta} peserta · ${t.jam} jam rata-rata</div>
+            <div class="topic-mini-bar"><div class="topic-mini-fill" style="width:${t.pct}%;background:${t.color}"></div></div>
+            <div style="font-size:0.68rem;color:var(--gray-500);margin-top:4px;text-align:right;">${t.pct}% partisipasi</div>
+          </div>`).join('')}
+        </div>
+        <div class="sec-hdr" style="margin-top:8px;"><div class="sec-title">Top 5 Program Terpopuler</div></div>
+        <div class="chart-panel">
+          <div class="chart-body" style="padding:0;">
+            <table class="rank-tbl">
+              <thead><tr><th>#</th><th>Program / Kelas</th><th>Topik</th><th>Tipe</th><th style="text-align:right">Peserta</th><th style="text-align:right">Avg Jam</th></tr></thead>
+              <tbody>
+                <tr><td><span style="background:#fef3c7;color:#92400e;border-radius:50%;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:800">1</span></td><td><strong>Sustainability For Business</strong></td><td><span class="tag tag-green">Sustainability</span></td><td><span class="tag tag-blue">Sertifikasi</span></td><td style="text-align:right;font-weight:700">312</td><td style="text-align:right;color:var(--kg-mid);font-weight:700">3.0</td></tr>
+                <tr><td><span style="background:#e0f2fe;color:#0369a1;border-radius:50%;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:800">2</span></td><td><strong>AI Fundamentals for All</strong></td><td><span class="tag tag-violet">AI General</span></td><td><span class="tag tag-blue">Webinar</span></td><td style="text-align:right;font-weight:700">287</td><td style="text-align:right;color:var(--kg-mid);font-weight:700">2.0</td></tr>
+                <tr><td>3</td><td><strong>Video Production Basic</strong></td><td><span class="tag tag-amber">Video Production</span></td><td><span class="tag tag-blue">Workshop</span></td><td style="text-align:right;font-weight:700">241</td><td style="text-align:right;color:var(--kg-mid);font-weight:700">6.0</td></tr>
+                <tr><td>4</td><td><strong>AI for Newsroom Intensive</strong></td><td><span class="tag tag-violet">AI Newsroom</span></td><td><span class="tag tag-blue">Training</span></td><td style="text-align:right;font-weight:700">198</td><td style="text-align:right;color:var(--kg-mid);font-weight:700">4.0</td></tr>
+                <tr><td>5</td><td><strong>Creative Thinking Workshop</strong></td><td><span class="tag tag-blue">Creative Thinking</span></td><td><span class="tag tag-amber">Self-Report</span></td><td style="text-align:right;font-weight:700">127</td><td style="text-align:right;color:var(--kg-mid);font-weight:700">8.0</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
-    </div>
-  </main>
+
+      <!-- TAB: KELOLA AKSES -->
+      <div class="tab-panel" id="tab-access">
+        <div class="page-header">
+          <div class="page-title">⚙️ Kelola Akses & Sistem</div>
+          <div class="page-sub">Manajemen hak akses dan mode maintenance portal</div>
+        </div>
+        <!-- Maintenance Toggle -->
+        <div class="card" style="margin-bottom:20px;">
+          <div class="card-title">🔧 Mode Maintenance</div>
+          <div class="info-alert">Saat mode maintenance aktif, karyawan tidak dapat login ke portal. Hanya Admin yang tetap bisa mengakses.</div>
+          <div class="toggle-row">
+            <label class="toggle-switch">
+              <input type="checkbox" id="maint-toggle" onchange="toggleMaintenance()">
+              <div class="toggle-track"></div>
+              <div class="toggle-thumb"></div>
+            </label>
+            <span class="toggle-label">Mode Maintenance</span>
+            <span class="toggle-status" id="maint-status">OFF</span>
+          </div>
+          <div style="margin-top:12px;font-size:0.8rem;color:var(--gray-500);" id="maint-time-info"></div>
+        </div>
+        <!-- Access List -->
+        <div class="card">
+          <div class="card-title">👥 Daftar HR & Admin</div>
+          <div class="info-alert">Akses dikelola melalui tab <strong>Access</strong> di Google Sheet. Tabel di bawah menampilkan daftar HR dan Admin yang terdaftar.</div>
+          <div class="filter-row">
+            <input class="search-input" id="access-search" style="max-width:280px;padding:9px 14px;" placeholder="Cari nama / NIK..." oninput="filterAccessTable()">
+            <select class="select-input" id="access-role-filter" onchange="filterAccessTable()" style="min-width:150px;max-width:200px;padding:9px 14px;">
+              <option value="">Semua Role</option>
+              <option value="Admin">Admin</option>
+              <option value="HR">HR</option>
+            </select>
+          </div>
+          <div id="access-table-content">
+            <div class="loading-wrap"><div class="spinner"></div><div class="loading-text">Memuat data akses...</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: EXPORT DATA -->
+      <div class="tab-panel" id="tab-export">
+        <div class="page-header">
+          <div class="page-title">📤 Export Data</div>
+          <div class="page-sub">Unduh data learning dalam berbagai format</div>
+        </div>
+        <div class="export-grid">
+          <div class="export-card">
+            <div class="export-icon">📊</div>
+            <div class="export-title">Rekap Dashboard</div>
+            <div class="export-desc">Summary KPI dan rekap per unit dalam format Excel (.xlsx) siap untuk laporan manajemen.</div>
+            <button class="btn-export" onclick="showToast('Fitur export segera tersedia','')">⬇ Export Excel</button>
+          </div>
+          <div class="export-card">
+            <div class="export-icon">📋</div>
+            <div class="export-title">Learning Participation</div>
+            <div class="export-desc">Raw data seluruh partisipasi learning karyawan dalam format CSV untuk analisis lanjutan.</div>
+            <button class="btn-export" onclick="showToast('Fitur export segera tersedia','')">⬇ Export CSV</button>
+          </div>
+          <div class="export-card">
+            <div class="export-icon">👥</div>
+            <div class="export-title">Data Karyawan</div>
+            <div class="export-desc">Database karyawan lengkap dengan status learning dan capaian target jam belajar.</div>
+            <button class="btn-export" onclick="showToast('Fitur export segera tersedia','')">⬇ Export Excel</button>
+          </div>
+          <div class="export-card">
+            <div class="export-icon">🎓</div>
+            <div class="export-title">Topik & Program</div>
+            <div class="export-desc">Rekap per topik mandatory dan program learning beserta jumlah peserta dan jam rata-rata.</div>
+            <button class="btn-export" onclick="showToast('Fitur export segera tersedia','')">⬇ Export CSV</button>
+          </div>
+          <div class="export-card">
+            <div class="export-icon">🏢</div>
+            <div class="export-title">Rekap per Unit</div>
+            <div class="export-desc">Breakdown progress per unit / fungsi dalam format PDF siap presentasi ke manajemen unit.</div>
+            <button class="btn-export" onclick="showToast('Fitur export segera tersedia','')">⬇ Export PDF</button>
+          </div>
+          <div class="export-card">
+            <div class="export-icon">📅</div>
+            <div class="export-title">Laporan Bulanan</div>
+            <div class="export-desc">Template laporan bulanan otomatis dengan data terkini dari dashboard learning hub.</div>
+            <button class="btn-export outline" onclick="showToast('Fitur laporan otomatis segera hadir','')">🔜 Segera Hadir</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: PENGATURAN -->
+      <div class="tab-panel" id="tab-settings">
+        <div class="page-header">
+          <div class="page-title">🔧 Pengaturan</div>
+          <div class="page-sub">Konfigurasi sistem portal MA Learning Hub</div>
+        </div>
+        <div class="settings-grid">
+          <div class="settings-section">
+            <div class="settings-title">🎯 Target Learning</div>
+            <div class="settings-row">
+              <div><div class="settings-row-label">Target Jam per Karyawan</div><div class="settings-row-sub">Batas minimum jam belajar tahunan</div></div>
+              <strong style="color:var(--kg-navy);">18 jam</strong>
+            </div>
+            <div class="settings-row">
+              <div><div class="settings-row-label">Periode Aktif</div><div class="settings-row-sub">Tahun program berjalan</div></div>
+              <strong style="color:var(--kg-navy);">2026</strong>
+            </div>
+            <div class="settings-row">
+              <div><div class="settings-row-label">Deadline</div><div class="settings-row-sub">Tanggal akhir program</div></div>
+              <strong style="color:var(--kg-navy);">31 Des 2026</strong>
+            </div>
+            <div class="settings-row">
+              <div><div class="settings-row-label">Jumlah Mandatory Topics</div><div class="settings-row-sub">Topik wajib per karyawan</div></div>
+              <strong style="color:var(--kg-navy);">6 topik</strong>
+            </div>
+          </div>
+          <div class="settings-section">
+            <div class="settings-title">🔗 Integrasi Data</div>
+            <div class="settings-row">
+              <div><div class="settings-row-label">Google Sheet ID</div><div class="settings-row-sub">Sumber data utama portal</div></div>
+              <span class="tag tag-green">Terhubung</span>
+            </div>
+            <div class="settings-row">
+              <div><div class="settings-row-label">Apps Script Web App</div><div class="settings-row-sub">Backend API endpoint</div></div>
+              <span class="tag tag-green">Aktif</span>
+            </div>
+            <div class="settings-row">
+              <div><div class="settings-row-label">Update Terakhir</div><div class="settings-row-sub">Sinkronisasi data terakhir</div></div>
+              <strong style="color:var(--kg-navy);">20 Mei 2026</strong>
+            </div>
+            <div class="settings-row">
+              <div><div class="settings-row-label">Google Form Self-Report</div><div class="settings-row-sub">Link form pelaporan mandiri</div></div>
+              <span class="tag tag-green">Aktif</span>
+            </div>
+          </div>
+          <div class="settings-section">
+            <div class="settings-title">🔐 Mode Maintenance</div>
+            <div class="settings-row">
+              <div><div class="settings-row-label">Status Saat Ini</div><div class="settings-row-sub">Kontrol akses portal</div></div>
+              <div class="toggle-row" style="margin:0;gap:8px;">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="maint-toggle-2" onchange="syncMaintToggle(this)">
+                  <div class="toggle-track"></div>
+                  <div class="toggle-thumb"></div>
+                </label>
+                <span class="toggle-status" id="maint-status-2">OFF</span>
+              </div>
+            </div>
+            <div class="info-alert" style="margin-top:12px;margin-bottom:0;">Aktifkan saat data sedang diperbarui agar karyawan tidak mengakses data yang belum final.</div>
+          </div>
+          <div class="settings-section">
+            <div class="settings-title">ℹ️ Informasi Sistem</div>
+            <div class="settings-row">
+              <div><div class="settings-row-label">Versi Portal</div></div>
+              <strong style="color:var(--kg-navy);">v3.0</strong>
+            </div>
+            <div class="settings-row">
+              <div><div class="settings-row-label">Framework</div></div>
+              <strong style="color:var(--kg-navy);">Vanilla HTML/JS</strong>
+            </div>
+            <div class="settings-row">
+              <div><div class="settings-row-label">Total Karyawan</div></div>
+              <strong style="color:var(--kg-navy);">892</strong>
+            </div>
+            <div class="settings-row">
+              <div><div class="settings-row-label">Dibuat untuk</div></div>
+              <strong style="color:var(--kg-navy);">KG Media Learning</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: LEARNING HUB -->
+      <div class="tab-panel" id="tab-hub">
+        <div class="page-header">
+          <div class="page-title">🎓 MA Learning Hub</div>
+          <div class="page-sub">Akses platform learning KG Media</div>
+        </div>
+        <div class="card" style="text-align:center;padding:60px 40px;">
+          <div style="font-size:4rem;margin-bottom:20px;">🎓</div>
+          <div style="font-family:'Sora',sans-serif;font-size:1.4rem;font-weight:700;color:var(--kg-navy);margin-bottom:8px;">MA Learning Hub</div>
+          <div style="color:var(--gray-500);margin-bottom:28px;font-size:0.9rem;">Klik tombol di bawah untuk mengakses platform learning KG Media</div>
+          <a href="https://bit.ly/MALearningHub" target="_blank" class="btn-report" style="font-size:1rem;padding:14px 36px;">🚀 Buka MA Learning Hub</a>
+          <div style="color:var(--gray-400);font-size:0.75rem;margin-top:16px;">bit.ly/MALearningHub</div>
+        </div>
+      </div>
+
+    </main>
+  </div>
 </div>
 
 <!-- TOAST -->
@@ -894,7 +1382,7 @@ const PART_PER_PAGE = 50;
 // LOGO SETUP
 // ============================================================
 function setupLogos() {
-  const imgs = document.querySelectorAll('#login-logo-img, #app-logo-img');
+  const imgs = document.querySelectorAll('#login-logo-img, #app-logo-img, #sb-logo-img');
   imgs.forEach(img => { img.src = LOGO_URL; img.onerror = () => { img.style.display = 'none'; }; });
 }
 
@@ -939,9 +1427,11 @@ function toggleMaintenance() {
 function updateMaintenanceUI(active) {
   updateLoginMaintenanceNotice(active);
   const status = document.getElementById('maint-status');
+  const status2 = document.getElementById('maint-status-2');
   const banner = document.getElementById('maint-banner');
   const timeInfo = document.getElementById('maint-time-info');
   if (status) { status.textContent = active ? 'ON' : 'OFF'; status.className = 'toggle-status ' + (active ? 'on' : 'off'); }
+  if (status2) { status2.textContent = active ? 'ON' : 'OFF'; status2.className = 'toggle-status ' + (active ? 'on' : 'off'); }
   if (banner) banner.classList.toggle('show', active);
   if (timeInfo) {
     const t = localStorage.getItem('kg_maint_time');
@@ -1152,14 +1642,23 @@ function initApp() {
   const app = document.getElementById('app');
   app.classList.add('active');
 
-  // User badge
-  const initials = currentUser.name.split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase();
-  document.getElementById('user-avatar').textContent = initials || currentUser.nik.slice(0,2).toUpperCase();
-  document.getElementById('user-name-display').textContent = currentUser.name;
-  document.getElementById('user-nik-display').textContent = 'NIK: ' + currentUser.nik;
-  const roleBadge = document.getElementById('user-role-badge');
-  roleBadge.textContent = currentUser.role;
-  roleBadge.className = 'user-role-badge role-' + currentUser.role.toLowerCase();
+  // Show sidebar
+  const sidebar = document.getElementById('app-sidebar');
+  sidebar.classList.add('visible');
+  document.getElementById('app-main').classList.add('with-sidebar');
+
+  // Sidebar user info
+  const initials = currentUser.name.split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase() || currentUser.nik.slice(0,2).toUpperCase();
+  document.getElementById('sb-avatar').textContent = initials;
+  document.getElementById('sb-user-name').textContent = currentUser.name;
+  document.getElementById('sb-user-role').textContent = currentUser.role + ' · NIK ' + currentUser.nik;
+
+  // Topbar user info
+  document.getElementById('topbar-avatar').textContent = initials;
+  document.getElementById('topbar-name').textContent = currentUser.name;
+  const rb = document.getElementById('topbar-role-badge');
+  rb.textContent = currentUser.role;
+  rb.className = 'user-role-badge role-' + currentUser.role.toLowerCase();
 
   // Build navigation
   buildNav();
@@ -1167,57 +1666,91 @@ function initApp() {
   // Maintenance UI
   updateMaintenanceUI(getMaintenanceState());
   if (currentUser.role === 'Admin') {
-    document.getElementById('maint-toggle').checked = getMaintenanceState();
+    const mt = document.getElementById('maint-toggle');
+    const mt2 = document.getElementById('maint-toggle-2');
+    if (mt) mt.checked = getMaintenanceState();
+    if (mt2) mt2.checked = getMaintenanceState();
   }
 
   // Auto-load first tab
-  const firstTab = document.querySelector('.nav-tab');
-  if (firstTab) firstTab.click();
+  const firstItem = document.querySelector('.sb-item');
+  if (firstItem) firstItem.click();
 }
 
-// ============================================================
-// NAVIGATION
-// ============================================================
 function buildNav() {
   const role = currentUser.role;
-  const tabs = [];
 
+  // Define tabs by role
+  const tabs = [];
   if (role === 'Employee') {
-    tabs.push({ id: 'my-learning', label: '📚 Learning Saya', load: loadMyLearning });
-    if (hasSearchAccess()) tabs.push({ id: 'search', label: '🔍 Cari Karyawan' });
-    tabs.push({ id: 'hub',         label: '🎓 Learning Hub' });
+    tabs.push({ section: 'Saya' });
+    tabs.push({ id: 'my-learning', icon: '📚', label: 'Learning Saya', load: loadMyLearning, title: 'Learning Saya' });
+    tabs.push({ id: 'hub', icon: '🎓', label: 'Learning Hub', title: 'MA Learning Hub' });
+    if (hasSearchAccess()) {
+      tabs.push({ section: 'Data' });
+      tabs.push({ id: 'search', icon: '🔍', label: 'Cari Karyawan', title: 'Cari Karyawan' });
+    }
   } else if (role === 'HR') {
-    tabs.push({ id: 'dashboard',     label: '📊 Dashboard',   load: loadDashboard });
-    tabs.push({ id: 'search',        label: '🔍 Cari Karyawan' });
-    tabs.push({ id: 'my-learning',   label: '📚 Learning Saya', load: loadMyLearning });
-    tabs.push({ id: 'hub',           label: '🎓 Learning Hub' });
+    tabs.push({ section: 'Overview' });
+    tabs.push({ id: 'dashboard', icon: '📊', label: 'Dashboard', load: loadDashboard, title: 'Dashboard Learning Hours' });
+    tabs.push({ id: 'tren', icon: '📈', label: 'Tren & Analitik', title: 'Tren & Analitik' });
+    tabs.push({ section: 'Data' });
+    tabs.push({ id: 'search', icon: '🔍', label: 'Cari Karyawan', title: 'Cari Karyawan' });
+    tabs.push({ id: 'participation', icon: '📋', label: 'Learning Participation', load: loadParticipation, title: 'Learning Participation' });
+    tabs.push({ id: 'unit', icon: '🏢', label: 'Per Unit / Fungsi', title: 'Per Unit / Fungsi' });
+    tabs.push({ section: 'Saya' });
+    tabs.push({ id: 'my-learning', icon: '📚', label: 'Learning Saya', load: loadMyLearning, title: 'Learning Saya' });
+    tabs.push({ id: 'hub', icon: '🎓', label: 'Learning Hub', title: 'MA Learning Hub' });
   } else if (role === 'Admin') {
-    tabs.push({ id: 'dashboard',     label: '📊 Dashboard',   load: loadDashboard });
-    tabs.push({ id: 'search',        label: '🔍 Cari Karyawan' });
-    tabs.push({ id: 'my-learning',   label: '📚 Learning Saya', load: loadMyLearning });
-    tabs.push({ id: 'hub',           label: '🎓 Learning Hub' });
-    tabs.push({ id: 'access',        label: '⚙️ Kelola Akses', load: loadAccessManagement });
+    tabs.push({ section: 'Overview' });
+    tabs.push({ id: 'dashboard', icon: '📊', label: 'Dashboard', load: loadDashboard, title: 'Dashboard Learning Hours' });
+    tabs.push({ id: 'tren', icon: '📈', label: 'Tren & Analitik', title: 'Tren & Analitik' });
+    tabs.push({ id: 'unit', icon: '🏢', label: 'Per Unit / Fungsi', title: 'Per Unit / Fungsi' });
+    tabs.push({ section: 'Data' });
+    tabs.push({ id: 'search', icon: '🔍', label: 'Cari Karyawan', title: 'Cari Karyawan' });
+    tabs.push({ id: 'participation', icon: '📋', label: 'Learning Participation', load: loadParticipation, title: 'Learning Participation' });
+    tabs.push({ id: 'topik', icon: '🎓', label: 'Topik & Program', title: 'Topik & Program' });
+    tabs.push({ section: 'Manajemen' });
+    tabs.push({ id: 'access', icon: '⚙️', label: 'Kelola Akses', load: loadAccessManagement, title: 'Kelola Akses & Sistem' });
+    tabs.push({ id: 'export', icon: '📤', label: 'Export Data', title: 'Export Data' });
+    tabs.push({ id: 'settings', icon: '🔧', label: 'Pengaturan', title: 'Pengaturan Sistem' });
+    tabs.push({ section: 'Saya' });
+    tabs.push({ id: 'my-learning', icon: '📚', label: 'Learning Saya', load: loadMyLearning, title: 'Learning Saya' });
+    tabs.push({ id: 'hub', icon: '🎓', label: 'MA Learning Hub', title: 'MA Learning Hub' });
   }
 
-  const nav = document.getElementById('app-nav');
+  const nav = document.getElementById('sb-nav');
   nav.innerHTML = '';
   tabs.forEach(tab => {
-    const btn = document.createElement('div');
-    btn.className = 'nav-tab';
-    btn.textContent = tab.label;
-    btn.dataset.tab = tab.id;
-    btn.onclick = () => switchTab(tab.id, tab.load);
-    nav.appendChild(btn);
+    if (tab.section) {
+      const sec = document.createElement('div');
+      sec.className = 'sb-section';
+      sec.textContent = tab.section;
+      nav.appendChild(sec);
+      return;
+    }
+    const item = document.createElement('div');
+    item.className = 'sb-item';
+    item.innerHTML = `<span class="si">${tab.icon}</span>${tab.label}`;
+    item.dataset.tab = tab.id;
+    item.dataset.title = tab.title || tab.label;
+    item.onclick = () => switchTab(tab.id, tab.load, tab.title || tab.label);
+    nav.appendChild(item);
   });
 }
 
 let loadedTabs = {};
-function switchTab(tabId, loadFn) {
-  document.querySelectorAll('.nav-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
+function switchTab(tabId, loadFn, title) {
+  document.querySelectorAll('.sb-item').forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   const panel = document.getElementById('tab-' + tabId);
   if (panel) panel.classList.add('active');
   if (loadFn && !loadedTabs[tabId]) { loadedTabs[tabId] = true; loadFn(); }
+  // Update topbar title
+  if (title) {
+    const tt = document.getElementById('topbar-title');
+    if (tt) tt.textContent = title;
+  }
 }
 
 // ============================================================
@@ -1968,11 +2501,27 @@ function doLogout() {
   currentUser = null; dbData = []; partData = []; recapData = [];
   loadedTabs = {}; filteredPartData = [];
   document.getElementById('app').classList.remove('active');
+  const sidebar = document.getElementById('app-sidebar');
+  if (sidebar) sidebar.classList.remove('visible');
+  const mainEl = document.getElementById('app-main');
+  if (mainEl) mainEl.classList.remove('with-sidebar');
   document.getElementById('login-screen').style.display = '';
   document.getElementById('nik-input').value = '';
   resetLoginButton();
   updateLoginMaintenanceNotice();
   hideLoginError();
+}
+
+function syncMaintToggle(src) {
+  // Sync both toggles and trigger main logic
+  const val = src.checked;
+  const t1 = document.getElementById('maint-toggle');
+  const t2 = document.getElementById('maint-toggle-2');
+  if (t1) t1.checked = val;
+  if (t2) t2.checked = val;
+  setMaintenanceState(val);
+  updateMaintenanceUI(val);
+  showToast(val ? 'Mode Maintenance AKTIF — karyawan tidak bisa login' : 'Mode Maintenance NONAKTIF — portal kembali normal', val ? 'error' : 'success');
 }
 
 // ============================================================
